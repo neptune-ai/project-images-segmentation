@@ -1,6 +1,9 @@
 import argparse
 import json
 import os
+import math
+
+from contexttimer import Timer
 
 import numpy as np
 import torch
@@ -38,7 +41,7 @@ def main(args):
 
     step = 0
 
-    for epoch in tqdm(range(args.epochs), total=args.epochs):
+    for epoch in tqdm(range(args.epochs), total=args.epochs, desc="epoch:"):
         for phase in ["train", "valid"]:
             if phase == "train":
                 unet.train()
@@ -48,7 +51,9 @@ def main(args):
             validation_pred = []
             validation_true = []
 
-            for i, data in enumerate(loaders[phase]):
+            for i, data in tqdm(enumerate(loaders[phase]),
+                                desc=phase,
+                                total=math.floor(len(loaders[phase].dataset)/args.batch_size)):
                 if phase == "train":
                     step += 1
 
@@ -72,7 +77,7 @@ def main(args):
                         validation_true.extend(
                             [y_true_np[s] for s in range(y_true_np.shape[0])]
                         )
-                        if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
+                        if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1) and False:
                             if i * args.batch_size < args.vis_images:
                                 tag = "image/{}".format(i)
                                 num_images = args.vis_images - i * args.batch_size
@@ -190,8 +195,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=100,
-        help="number of epochs to train (default: 100)",
+        default=5,
+        help="number of epochs to train (default: 5)",
     )
     parser.add_argument(
         "--lr",

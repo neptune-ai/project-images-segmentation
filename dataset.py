@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from skimage.io import imread
 from torch.utils.data import Dataset
+import tqdm
 
 from utils import crop_sample, pad_sample, resize_sample, normalize_volume
 
@@ -22,7 +23,7 @@ class BrainSegmentationDataset(Dataset):
         image_size=256,
         subset="train",
         random_sampling=True,
-        validation_cases=10,
+        validation_cases=5,
         seed=42,
     ):
         assert subset in ["all", "train", "validation"]
@@ -61,6 +62,9 @@ class BrainSegmentationDataset(Dataset):
                     list(set(self.patients).difference(validation_patients))
                 )
 
+        if subset == 'train':
+            self.patients = self.patients[:10]
+
         print("preprocessing {} volumes...".format(subset))
         # create list of tuples (volume, mask)
         self.volumes = [(volumes[k], masks[k]) for k in self.patients]
@@ -75,7 +79,7 @@ class BrainSegmentationDataset(Dataset):
 
         print("resizing {} volumes...".format(subset))
         # resize
-        self.volumes = [resize_sample(v, size=image_size) for v in self.volumes]
+        self.volumes = [resize_sample(v, size=image_size) for v in tqdm.tqdm(self.volumes)]
 
         print("normalizing {} volumes...".format(subset))
         # normalize channel-wise

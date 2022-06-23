@@ -31,7 +31,7 @@ class Scale(object):
         image = rescale(
             image,
             (scale, scale),
-            multichannel=True,
+            channel_axis=-1,
             preserve_range=True,
             mode="constant",
             anti_aliasing=False,
@@ -40,7 +40,7 @@ class Scale(object):
             mask,
             (scale, scale),
             order=0,
-            multichannel=True,
+            channel_axis=-1,
             preserve_range=True,
             mode="constant",
             anti_aliasing=False,
