@@ -1,60 +1,34 @@
-from io import BytesIO
-
-import scipy.misc
-# import tensorflow as tf
+import neptune.new as neptune
+from neptune.new.types import File
+import numpy as np
 
 
 class Logger(object):
 
-    def __init__(self, log_dir):
-        pass
-        # self.writer = tf.summary.FileWriter(log_dir)
+    def __init__(self):
+        self.run = neptune.init(
+            project="common/Pytorch-ImageSegmentation-Unet",
+            # Ideally set the Environment Variable!
+            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
+        )
 
-    def scalar_summary(self, tag, value, step):
-        # summary = tf.Summary(value=[tf.Summary.Value(tag=tag, simple_value=value)])
-        # self.writer.add_summary(summary, step)
-        # self.writer.flush()
-        pass
+    def log_training_scalar(self, key, value):
+        self.run["train/"+key].log(value)
 
-    def image_summary(self, tag, image, step):
-        # s = BytesIO()
-        # scipy.misc.toimage(image).save(s, format="png")
+    def log_finetuning_scalar(self, key, value):
+        self.run["finetune/"+key].log(value)
 
-        # # Create an Image object
-        # img_sum = tf.Summary.Image(
-        #     encoded_image_string=s.getvalue(),
-        #     height=image.shape[0],
-        #     width=image.shape[1],
-        # )
+    def log_scalar(self, key: str, value):
+        self.run[key].log(value)
 
-        # # Create and write Summary
-        # summary = tf.Summary(value=[tf.Summary.Value(tag=tag, image=img_sum)])
-        # self.writer.add_summary(summary, step)
-        # self.writer.flush()
-        pass
+    def upload_image_list(self, tag, images, step, start_val=0):
+        if len(images) == 0:
+            return
+        img_summaries = []
+        for i, img in enumerate(images, start=start_val):
+            if img.max() > 1:
+                img = img.astype(np.float32)/255
 
-    def image_list_summary(self, tag, images, step):
-        # if len(images) == 0:
-        #     return
-        # img_summaries = []
-        # for i, img in enumerate(images):
-        #     s = BytesIO()
-        #     scipy.misc.toimage(img).save(s, format="png")
+            self.run[f"{tag}_{step}/{i}.png"].upload(File.as_image(img))
 
-        #     # Create an Image object
-        #     img_sum = tf.Summary.Image(
-        #         encoded_image_string=s.getvalue(),
-        #         height=img.shape[0],
-        #         width=img.shape[1],
-        #     )
-
-        #     # Create a Summary value
-        #     img_summaries.append(
-        #         tf.Summary.Value(tag="{}/{}".format(tag, i), image=img_sum)
-        #     )
-
-        # # Create and write Summary
-        # summary = tf.Summary(value=img_summaries)
-        # self.writer.add_summary(summary, step)
-        # self.writer.flush()
-        pass
+global_logger = Logger()

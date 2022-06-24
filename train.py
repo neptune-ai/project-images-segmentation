@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import BrainSegmentationDataset as Dataset
-from logger import Logger
+from logger import global_logger as logger
 from loss import DiceLoss
 from transform import transforms
 from unet import UNet
@@ -22,6 +22,7 @@ from utils import log_images, dsc
 def main(args):
     makedirs(args)
     snapshotargs(args)
+    logger.run["args"] = vars(args)
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
 
     loader_train, loader_valid = data_loaders(args)
@@ -35,7 +36,6 @@ def main(args):
 
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
 
-    logger = Logger(args.logs)
     loss_train = []
     loss_valid = []
 
@@ -68,7 +68,6 @@ def main(args):
                     loss = dsc_loss(y_pred, y_true)
 
                     if phase == "valid":
-                        loss_valid.append(loss.item())
                         y_pred_np = y_pred.detach().cpu().numpy()
                         validation_pred.extend(
                             [y_pred_np[s] for s in range(y_pred_np.shape[0])]
@@ -79,25 +78,22 @@ def main(args):
                         )
                         if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1) and False:
                             if i * args.batch_size < args.vis_images:
-                                tag = "image/{}".format(i)
+                                tag = "val_step"
                                 num_images = args.vis_images - i * args.batch_size
-                                logger.image_list_summary(
+                                logger.upload_image_list(
                                     tag,
-                                    log_images(x, y_true, y_pred)[:num_images],
-                                    step,
+                                    log_images(x, y_true, y_true)[:num_images],
+                                    epoch,
+                                    i * args.batch_size
                                 )
 
                     if phase == "train":
-                        loss_train.append(loss.item())
+                        logger.log_training_scalar("train_loss", loss.item())
                         loss.backward()
                         optimizer.step()
 
-                if phase == "train" and (step + 1) % 10 == 0:
-                    log_loss_summary(logger, loss_train, step)
-                    loss_train = []
-
             if phase == "valid":
-                log_loss_summary(logger, loss_valid, step, prefix="val_")
+                logger.log_training_scalar("valid_loss", loss.item())
                 mean_dsc = np.mean(
                     dsc_per_volume(
                         validation_pred,
@@ -105,11 +101,10 @@ def main(args):
                         loader_valid.dataset.patient_slice_index,
                     )
                 )
-                logger.scalar_summary("val_dsc", mean_dsc, step)
+                logger.log_training_scalar("val_dsc", mean_dsc)
                 if mean_dsc > best_validation_dsc:
                     best_validation_dsc = mean_dsc
                     torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
-                loss_valid = []
 
     print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
 
@@ -145,12 +140,14 @@ def datasets(args):
         subset="train",
         image_size=args.image_size,
         transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5),
+        seed=args.seed
     )
     valid = Dataset(
         images_dir=args.images,
         subset="validation",
         image_size=args.image_size,
         random_sampling=False,
+        seed=args.seed
     )
     return train, valid
 
@@ -168,7 +165,7 @@ def dsc_per_volume(validation_pred, validation_true, patient_slice_index):
 
 
 def log_loss_summary(logger, loss, step, prefix=""):
-    logger.scalar_summary(prefix + "loss", np.mean(loss), step)
+    logger.log_scalar(prefix+"_loss", loss)
 
 
 def makedirs(args):
@@ -225,11 +222,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--vis-freq",
         type=int,
-        default=10,
-        help="frequency of saving images to log file (default: 10)",
+        default=1,
+        help="frequency of saving images to log file (default: 1)",
     )
     parser.add_argument(
         "--weights", type=str, default="./weights", help="folder to save weights"
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="random seed"
     )
     parser.add_argument(
         "--logs", type=str, default="./logs", help="folder to save logs"
