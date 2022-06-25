@@ -133,8 +133,8 @@ class BrainSegmentationDataset(Dataset):
         image = image.transpose(2, 0, 1)
         mask = mask.transpose(2, 0, 1)
 
-        image_tensor = torch.from_numpy(image.astype(np.float32))
-        mask_tensor = torch.from_numpy(mask.astype(np.float32))
+        image_tensor = torch.from_numpy(image.astype(np.float32)) / 255.
+        mask_tensor = torch.from_numpy(mask.astype(np.float32)) / 255.
 
         # return tensors
         return image_tensor, mask_tensor
