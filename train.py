@@ -89,6 +89,7 @@ def main(args):
 
                 x, y_true = data
                 x, y_true = x.to(device), y_true.to(device)
+                assert x.max() <= 1. and y_true.max() <= 1.
 
                 optimizer.zero_grad()
 
@@ -112,7 +113,7 @@ def main(args):
                                 num_images = args.vis_images - i * args.batch_size
                                 logger.upload_image_list(
                                     tag,
-                                    log_images(x, y_true, y_true)[:num_images],
+                                    log_images(x, y_true, y_pred)[:num_images],
                                     epoch,
                                     i * args.batch_size
                                 )
@@ -195,7 +196,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=5,
+        default=1,
         help="number of epochs to train (default: 5)",
     )
     parser.add_argument(
