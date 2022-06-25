@@ -12,16 +12,46 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import BrainSegmentationDataset as Dataset
-from logger import global_logger as logger
-from loss import DiceLoss
 from transform import transforms
-from unet import UNet
-from utils import log_images, dsc
+from model_utils import UNet, DiceLoss
+from utils import log_images, dsc, dsc_per_volume
 
+import neptune.new as neptune
+from neptune.new.types import File
+import numpy as np
+
+# Logger Class which holds the
+# Neptune run.
+class Logger(object):
+
+    def __init__(self):
+        self.run = neptune.init(
+            project="common/Pytorch-ImageSegmentation-Unet",
+            # Ideally set the Environment Variable!
+            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
+        )
+
+    def log_training_scalar(self, key, value):
+        self.run["train/"+key].log(value)
+
+    def log_finetuning_scalar(self, key, value):
+        self.run["finetune/"+key].log(value)
+
+    def log_scalar(self, key: str, value):
+        self.run[key].log(value)
+
+    def upload_image_list(self, tag, images, step, start_val=0):
+        if len(images) == 0:
+            return
+        img_summaries = []
+        for i, img in enumerate(images, start=start_val):
+            if img.max() > 1:
+                img = img.astype(np.float32)/255
+
+            self.run[f"{tag}_{step}/{i}.png"].upload(File.as_image(img))
 
 def main(args):
-    makedirs(args)
-    snapshotargs(args)
+    logger = Logger()
     logger.run["args"] = vars(args)
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
 
@@ -150,33 +180,6 @@ def datasets(args):
         seed=args.seed
     )
     return train, valid
-
-
-def dsc_per_volume(validation_pred, validation_true, patient_slice_index):
-    dsc_list = []
-    num_slices = np.bincount([p[0] for p in patient_slice_index])
-    index = 0
-    for p in range(len(num_slices)):
-        y_pred = np.array(validation_pred[index : index + num_slices[p]])
-        y_true = np.array(validation_true[index : index + num_slices[p]])
-        dsc_list.append(dsc(y_pred, y_true))
-        index += num_slices[p]
-    return dsc_list
-
-
-def log_loss_summary(logger, loss, step, prefix=""):
-    logger.log_scalar(prefix+"_loss", loss)
-
-
-def makedirs(args):
-    os.makedirs(args.weights, exist_ok=True)
-    os.makedirs(args.logs, exist_ok=True)
-
-
-def snapshotargs(args):
-    args_file = os.path.join(args.logs, "args.json")
-    with open(args_file, "w") as fp:
-        json.dump(vars(args), fp)
 
 
 if __name__ == "__main__":

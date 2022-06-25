@@ -63,7 +63,7 @@ class BrainSegmentationDataset(Dataset):
                 )
 
         if subset == 'train':
-            self.patients = self.patients[:10]
+            self.patients = self.patients[:2]
 
         print("preprocessing {} volumes...".format(subset))
         # create list of tuples (volume, mask)

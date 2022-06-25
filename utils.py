@@ -12,6 +12,18 @@ def dsc(y_pred, y_true, lcc=True):
     return np.sum(y_pred[y_true == 1]) * 2.0 / (np.sum(y_pred) + np.sum(y_true))
 
 
+def dsc_per_volume(validation_pred, validation_true, patient_slice_index):
+    dsc_list = []
+    num_slices = np.bincount([p[0] for p in patient_slice_index])
+    index = 0
+    for p in range(len(num_slices)):
+        y_pred = np.array(validation_pred[index : index + num_slices[p]])
+        y_true = np.array(validation_true[index : index + num_slices[p]])
+        dsc_list.append(dsc(y_pred, y_true))
+        index += num_slices[p]
+    return dsc_list
+
+
 def crop_sample(x):
     volume, mask = x
     volume[volume < np.max(volume) * 0.1] = 0
@@ -84,19 +96,6 @@ def normalize_volume(volume):
     return volume
 
 
-def log_images(x, y_true, y_pred, channel=1):
-    images = []
-    x_np = x[:, channel].cpu().numpy()
-    y_true_np = y_true[:, 0].cpu().numpy()
-    y_pred_np = y_pred[:, 0].cpu().numpy()
-    for i in range(x_np.shape[0]):
-        image = gray2rgb(np.squeeze(x_np[i]))
-        image = outline(image, y_pred_np[i], color=[255, 0, 0])
-        image = outline(image, y_true_np[i], color=[0, 255, 0])
-        images.append(image)
-    return images
-
-
 def gray2rgb(image):
     w, h = image.shape
     image += np.abs(np.min(image))
@@ -115,3 +114,16 @@ def outline(image, mask, color):
         if 0.0 < np.mean(mask[max(0, y - 1) : y + 2, max(0, x - 1) : x + 2]) < 1.0:
             image[max(0, y) : y + 1, max(0, x) : x + 1] = color
     return image
+
+
+def log_images(x, y_true, y_pred, channel=1):
+    images = []
+    x_np = x[:, channel].cpu().numpy()
+    y_true_np = y_true[:, 0].cpu().numpy()
+    y_pred_np = y_pred[:, 0].cpu().numpy()
+    for i in range(x_np.shape[0]):
+        image = gray2rgb(np.squeeze(x_np[i]))
+        image = outline(image, y_pred_np[i], color=[255, 0, 0])
+        image = outline(image, y_true_np[i], color=[0, 255, 0])
+        images.append(image)
+    return images
