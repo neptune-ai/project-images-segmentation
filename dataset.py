@@ -62,9 +62,6 @@ class BrainSegmentationDataset(Dataset):
                     list(set(self.patients).difference(validation_patients))
                 )
 
-        if subset == 'train':
-            self.patients = self.patients[:2]
-
         print("preprocessing {} volumes...".format(subset))
         # create list of tuples (volume, mask)
         self.volumes = [(volumes[k], masks[k]) for k in self.patients]

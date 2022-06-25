@@ -24,21 +24,20 @@ import numpy as np
 # Neptune run.
 class Logger(object):
 
-    def __init__(self):
+    def __init__(self, namespace="train"):
+        self.namespace = namespace
         self.run = neptune.init(
             project="common/Pytorch-ImageSegmentation-Unet",
             # Ideally set the Environment Variable!
             api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
+            source_files="*.py"  # Upload all `py` files.
         )
 
+    def _get_log_path(self, key):
+        return os.path.join(self.namespace, key)
+
     def log_training_scalar(self, key, value):
-        self.run["train/"+key].log(value)
-
-    def log_finetuning_scalar(self, key, value):
-        self.run["finetune/"+key].log(value)
-
-    def log_scalar(self, key: str, value):
-        self.run[key].log(value)
+        self.run[self._get_log_path(key)].log(value)
 
     def upload_image_list(self, tag, images, step, start_val=0):
         if len(images) == 0:
@@ -47,12 +46,12 @@ class Logger(object):
         for i, img in enumerate(images, start=start_val):
             if img.max() > 1:
                 img = img.astype(np.float32)/255
-
-            self.run[f"{tag}_{step}/{i}.png"].upload(File.as_image(img))
+            filepath = f"{tag}_{step}/{i}.png"
+            self.run[self._get_log_path(filepath)].upload(File.as_image(img))
 
 def main(args):
     logger = Logger()
-    logger.run["args"] = vars(args)
+    logger.run[logger._get_log_path("cli_args")] = vars(args)
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
 
     loader_train, loader_valid = data_loaders(args)
@@ -195,14 +194,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=16,
+        default=64,
         help="input batch size for training (default: 16)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=1,
-        help="number of epochs to train (default: 5)",
+        default=100,
+        help="number of epochs to train (default: 100)",
     )
     parser.add_argument(
         "--lr",
