@@ -125,13 +125,18 @@ def main(args):
 
             if phase == "valid":
                 logger.log_training_scalar("valid_loss", loss.item())
-                mean_dsc = np.mean(
-                    dsc_per_volume(
-                        validation_pred,
-                        validation_true,
-                        loader_valid.dataset.patient_slice_index,
+                try:
+                    mean_dsc = np.mean(
+                        dsc_per_volume(
+                            validation_pred,
+                            validation_true,
+                            loader_valid.dataset.patient_slice_index,
+                        )
                     )
-                )
+                except Exception as e:
+                    mean_dsc = 0.
+                    print(e)
+
                 logger.log_training_scalar("val_dsc", mean_dsc)
                 if mean_dsc > best_validation_dsc:
                     best_validation_dsc = mean_dsc
