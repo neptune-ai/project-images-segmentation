@@ -3,8 +3,6 @@ import json
 import os
 import math
 
-from contexttimer import Timer
-
 import numpy as np
 import torch
 import torch.optim as optim
@@ -49,27 +47,57 @@ class Logger(object):
             filepath = f"{tag}_{step}/{i}.png"
             self.run[self._get_log_path(filepath)].upload(File.as_image(img))
 
+    def log_train_image(self, path, img):
+        if img.max() > 1:
+            img = img.astype(np.float32)/255
+        self.run[self._get_log_path(path)].upload(File.as_image(img))
+
 def main(args):
-    logger = Logger()
-    logger.run[logger._get_log_path("cli_args")] = vars(args)
+    logger = Logger("train")
+    # Prefix with `/` to ignore logger's namespace.
+    logger.run[logger._get_log_path("/cli_args")] = vars(args)
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
 
-    loader_train, loader_valid = data_loaders(args)
+    dataset_train, dataset_valid = datasets(args)
+
+    #
+    # Log meta-data related to Data and Preprocessing.
+    #
+
+    # Log Train images with segments!
+    for i in range(args.vis_train_images):
+        image, mask = dataset_train.get_original_image(i)
+        # Log Images expects Shape for Image and Mask to be (N, C, H, W)
+        mask = mask.unsqueeze(0)
+        outline_image = log_images(image.unsqueeze(0), mask, torch.zeros_like(mask))[0]
+
+        # Prefix with `/` to ignore logger's namespace.
+        logger.log_train_image(f'/data/samples/image_{i}.png', outline_image)
+
+    # Log Preprocessing Params
+    logger.run['data/preprocessing_params'] = {'aug_angle': args.aug_angle,
+                                               'aug_scale': args.aug_scale,
+                                               'image_size': args.image_size,
+                                               'flip_prob': args.flip_prob,
+                                               'seed': args.seed}
+
+    loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
     loaders = {"train": loader_train, "valid": loader_valid}
 
+    # Get Model for training
     unet = UNet(in_channels=Dataset.in_channels, out_channels=Dataset.out_channels)
     unet.to(device)
-
-    dsc_loss = DiceLoss()
-    best_validation_dsc = 0.0
-
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
+    dsc_loss = DiceLoss()
 
+    # Log training meta-data
+    logger.run['train/hyper_params'] = {'lr': args.lr,
+                                        'batch_size': args.batch_size, 'epochs': args.epochs}
+
+    best_validation_dsc = 0.0
     loss_train = []
     loss_valid = []
-
     step = 0
-
     for epoch in tqdm(range(args.epochs), total=args.epochs, desc="epoch:"):
         for phase in ["train", "valid"]:
             if phase == "train":
@@ -106,9 +134,9 @@ def main(args):
                         validation_true.extend(
                             [y_true_np[s] for s in range(y_true_np.shape[0])]
                         )
-                        if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1) and False:
+                        if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
                             if i * args.batch_size < args.vis_images:
-                                tag = "val_step"
+                                tag = "validation_prediction_epoch"
                                 num_images = args.vis_images - i * args.batch_size
                                 logger.upload_image_list(
                                     tag,
@@ -118,12 +146,12 @@ def main(args):
                                 )
 
                     if phase == "train":
-                        logger.log_training_scalar("train_loss", loss.item())
+                        logger.log_training_scalar("metrics/train_loss", loss.item())
                         loss.backward()
                         optimizer.step()
 
             if phase == "valid":
-                logger.log_training_scalar("valid_loss", loss.item())
+                logger.log_training_scalar("metrics/valid_loss", loss.item())
                 try:
                     mean_dsc = np.mean(
                         dsc_per_volume(
@@ -136,7 +164,7 @@ def main(args):
                     mean_dsc = 0.
                     print(e)
 
-                logger.log_training_scalar("val_dsc", mean_dsc)
+                logger.log_training_scalar("metrics/val_dsc", mean_dsc)
                 if mean_dsc > best_validation_dsc:
                     best_validation_dsc = mean_dsc
                     torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
@@ -144,11 +172,9 @@ def main(args):
     print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
 
 
-def data_loaders(args):
-    dataset_train, dataset_valid = datasets(args)
-
+def data_loaders(dataset_train, dataset_valid, args):
     def worker_init(worker_id):
-        np.random.seed(42 + worker_id)
+        np.random.seed(args.seed + worker_id)
 
     loader_train = DataLoader(
         dataset_train,
@@ -174,7 +200,7 @@ def datasets(args):
         images_dir=args.images,
         subset="train",
         image_size=args.image_size,
-        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=0.5),
+        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
         seed=args.seed
     )
     valid = Dataset(
@@ -225,7 +251,13 @@ if __name__ == "__main__":
         "--vis-images",
         type=int,
         default=200,
-        help="number of visualization images to save in log file (default: 200)",
+        help="number of visualization images to save in log (default: 200)",
+    )
+    parser.add_argument(
+        "--vis-train-images",
+        type=int,
+        default=10,
+        help="number of train visualization images to save in log (default: 10)",
     )
     parser.add_argument(
         "--vis-freq",
@@ -262,6 +294,12 @@ if __name__ == "__main__":
         type=int,
         default=15,
         help="rotation angle range in degrees for augmentation (default: 15)",
+    )
+    parser.add_argument(
+        "--flip-prob",
+        type=int,
+        default=0.5,
+        help="probablilty of rotation of training image (default: 0.5)",
     )
     args = parser.parse_args()
     main(args)
