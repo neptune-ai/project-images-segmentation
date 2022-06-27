@@ -109,7 +109,7 @@ class BrainSegmentationDataset(Dataset):
     def __len__(self):
         return len(self.patient_slice_index)
 
-    def __getitem__(self, idx):
+    def _get_image(self, idx, do_transform=True):
         patient = self.patient_slice_index[idx][0]
         slice_n = self.patient_slice_index[idx][1]
 
@@ -123,7 +123,7 @@ class BrainSegmentationDataset(Dataset):
         image = v[slice_n]
         mask = m[slice_n]
 
-        if self.transform is not None:
+        if do_transform and self.transform is not None:
             image, mask = self.transform((image, mask))
 
         # fix dimensions (C, H, W)
@@ -135,3 +135,9 @@ class BrainSegmentationDataset(Dataset):
 
         # return tensors
         return image_tensor, mask_tensor
+
+    def __getitem__(self, idx):
+        return self._get_image(idx, do_transform=True)
+
+    def get_original_image(self, idx):
+        return self._get_image(idx, do_transform=False)
