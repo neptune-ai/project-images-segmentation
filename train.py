@@ -133,6 +133,7 @@ def main(args):
         unet.eval()
         validation_pred = []
         validation_true = []
+        logged_images = 0
         for i, data in tqdm(enumerate(loader_valid),
                             desc='valid',
                             total=math.floor(len(loader_valid.dataset)/args.batch_size)):
@@ -158,21 +159,26 @@ def main(args):
 
                 if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
                     # If current `epoch` is a multiple of `vis_freq`.
-                    if i * args.batch_size < args.vis_images:
-                        tag = "validation_prediction_epoch"
-                        num_images = args.vis_images - i * args.batch_size
+                    if logged_images < args.vis_images:
+                        num_images = args.vis_images - logged_images
                         images = log_images(x, y_true, y_pred)[:num_images]
-                        start_val = i * args.batch_size
 
-                        if len(images) == 0:
-                            return
+                        for i, img in enumerate(images):
+                            # Log only the images which
+                            # 1. Have false positives
+                            # 2. Or have some mask in the ground truth.
+                            true_sum = y_true[i].sum()
+                            pred_sum = y_pred[i].round().sum()
+                            if not (true_sum == 0 and pred_sum == 0):
+                                # dice_coeff = 2 * (y_true[i] * y_pred[i]) / (true_sum + pred_sum)
+                                dice_coeff = dsc(y_pred_np[i], y_true_np[i])
 
-                        for i, img in enumerate(images, start=start_val):
-                            if img.max() > 1:
-                                img = img.astype(np.float32)/255
-                            dice_coeff = dsc(y_pred_np[i], y_true_np[i])
-                            run[f"train/validation_predictions/{fnames[i]}"].log(
-                                File.as_image(img), name=f"Dice: {dice_coeff}")
+                                if img.max() > 1:
+                                    img = img.astype(np.float32)/255
+                                fname = fnames[i]
+                                run[f"train/validation_prediction_evolution/{fname}"].log(
+                                    File.as_image(img), name=f"Dice: {dice_coeff}")
+                                logged_images += 1
 
         try:
             # DSC per patient volume
@@ -191,6 +197,9 @@ def main(args):
         if mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
             torch.save(unet.state_dict(), os.path.join(
+                args.weights, "unet.pt"))
+            print("Uploading Model")
+            run['train/best_model_weights/model_weight'].upload(os.path.join(
                 args.weights, "unet.pt"))
 
 
