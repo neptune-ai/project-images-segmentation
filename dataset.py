@@ -31,10 +31,12 @@ class BrainSegmentationDataset(Dataset):
         # read images
         volumes = {}
         masks = {}
+        self.volume_fnames = {}
         print("reading {} images...".format(subset))
         for (dirpath, dirnames, filenames) in os.walk(images_dir):
             image_slices = []
             mask_slices = []
+            image_names = []
             for filename in sorted(
                 filter(lambda f: ".tif" in f, filenames),
                 key=lambda x: int(x.split(".")[-2].split("_")[4]),
@@ -44,12 +46,15 @@ class BrainSegmentationDataset(Dataset):
                     mask_slices.append(imread(filepath, as_gray=True))
                 else:
                     image_slices.append(imread(filepath))
+                    image_names.append(filename)
             if len(image_slices) > 0:
                 patient_id = dirpath.split("/")[-1]
                 volumes[patient_id] = np.array(image_slices[1:-1])
                 masks[patient_id] = np.array(mask_slices[1:-1])
+                self.volume_fnames[patient_id] = image_names[1:-1]
 
         self.patients = sorted(volumes)
+        self.volume_fnames
 
         # select cases to subset
         if not subset == "all":
@@ -122,6 +127,7 @@ class BrainSegmentationDataset(Dataset):
         v, m = self.volumes[patient]
         image = v[slice_n]
         mask = m[slice_n]
+        fname = self.volume_fnames[self.patients[patient]][slice_n]
 
         if do_transform and self.transform is not None:
             image, mask = self.transform((image, mask))
@@ -134,7 +140,7 @@ class BrainSegmentationDataset(Dataset):
         mask_tensor = torch.from_numpy(mask.astype(np.float32)) / 255.
 
         # return tensors
-        return image_tensor, mask_tensor
+        return image_tensor, mask_tensor, fname
 
     def __getitem__(self, idx):
         return self._get_image(idx, do_transform=True)
