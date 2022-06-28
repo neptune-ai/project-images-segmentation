@@ -1,5 +1,4 @@
 import numpy as np
-from medpy.filter.binary import largest_connected_component
 from skimage.exposure import rescale_intensity
 from skimage.transform import resize
 
@@ -120,9 +119,9 @@ def outline(image, mask, color):
 
 def log_images(x, y_true, y_pred, channel=1):
     images = []
-    x_np = x[:, channel].cpu().numpy()
-    y_true_np = y_true[:, 0].cpu().numpy()
-    y_pred_np = y_pred[:, 0].cpu().numpy()
+    x_np = x.cpu().numpy()[:, channel]
+    y_true_np = y_true.cpu().numpy()[:, 0]
+    y_pred_np = y_pred.cpu().numpy()[:, 0]
     for i in range(x_np.shape[0]):
         image = gray2rgb(np.squeeze(x_np[i]))
         image = outline(image, y_pred_np[i], color=[255, 0, 0])
