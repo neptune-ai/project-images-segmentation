@@ -78,14 +78,14 @@ def main(args):
 
     # Log Train images with segments!
     for i in range(args.vis_train_images):
-        image, mask = dataset_train.get_original_image(i)
+        image, mask, fname = dataset_train.get_original_image(i)
         # Log Images expects Shape for Image and Mask to be (N, C, H, W)
         mask = mask.unsqueeze(0)
         outline_image = log_images(image.unsqueeze(0), mask, torch.zeros_like(mask))[0]
 
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
-        run[f'data/samples/image_{i}.png'].upload(File.as_image(outline_image))
+        run[f'data/samples/images'].log(File.as_image(outline_image), name=fname)
 
     # Log Preprocessing Params
     run['data/preprocessing_params'] = {'aug_angle': args.aug_angle,
@@ -117,7 +117,7 @@ def main(args):
         for i, data in tqdm(enumerate(loader_train),
                             desc='train',
                             total=math.floor(len(loader_train.dataset)/args.batch_size)):
-            x, y_true = data
+            x, y_true, fnames = data
             x, y_true = x.to(device), y_true.to(device)
             assert x.max() <= 1. and y_true.max() <= 1.
 
@@ -136,7 +136,7 @@ def main(args):
         for i, data in tqdm(enumerate(loader_valid),
                             desc='valid',
                             total=math.floor(len(loader_valid.dataset)/args.batch_size)):
-            x, y_true = data
+            x, y_true, fnames = data
             x, y_true = x.to(device), y_true.to(device)
             assert x.max() <= 1. and y_true.max() <= 1.
 
@@ -170,8 +170,9 @@ def main(args):
                         for i, img in enumerate(images, start=start_val):
                             if img.max() > 1:
                                 img = img.astype(np.float32)/255
-                            run[f"train/validation_prediction_epoch_{epoch}/{i}.png"].upload(
-                                File.as_image(img))
+                            dice_coeff = dsc(y_pred_np[i], y_true_np[i])
+                            run[f"train/validation_predictions/{fnames[i]}"].log(
+                                File.as_image(img), name=f"Dice: {dice_coeff}")
 
         try:
             # DSC per patient volume
@@ -201,13 +202,13 @@ if __name__ == "__main__":
         "--batch-size",
         type=int,
         default=64,
-        help="input batch size for training (default: 16)",
+        help="input batch size for training (default: 64)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=100,
-        help="number of epochs to train (default: 100)",
+        default=20,
+        help="number of epochs to train (default: 20)",
     )
     parser.add_argument(
         "--lr",
