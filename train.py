@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import BrainSegmentationDataset as Dataset
+from dataset import BrainSegmentationDataset
 from transform import transforms
 from model_utils import UNet, DiceLoss
 from utils import log_images, dsc, dsc_per_volume
@@ -18,158 +18,23 @@ import neptune.new as neptune
 from neptune.new.types import File
 import numpy as np
 
-# Logger Class which holds the
-# Neptune run.
-class Logger(object):
 
-    def __init__(self, namespace="train"):
-        self.namespace = namespace
-        self.run = neptune.init(
-            project="common/Pytorch-ImageSegmentation-Unet",
-            # Ideally set the Environment Variable!
-            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
-            source_files="*.py"  # Upload all `py` files.
-        )
-
-    def _get_log_path(self, key):
-        return os.path.join(self.namespace, key)
-
-    def log_training_scalar(self, key, value):
-        self.run[self._get_log_path(key)].log(value)
-
-    def upload_image_list(self, tag, images, step, start_val=0):
-        if len(images) == 0:
-            return
-        img_summaries = []
-        for i, img in enumerate(images, start=start_val):
-            if img.max() > 1:
-                img = img.astype(np.float32)/255
-            filepath = f"{tag}_{step}/{i}.png"
-            self.run[self._get_log_path(filepath)].upload(File.as_image(img))
-
-    def log_train_image(self, path, img):
-        if img.max() > 1:
-            img = img.astype(np.float32)/255
-        self.run[self._get_log_path(path)].upload(File.as_image(img))
-
-def main(args):
-    logger = Logger("train")
-    # Prefix with `/` to ignore logger's namespace.
-    logger.run[logger._get_log_path("/cli_args")] = vars(args)
-    device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
-
-    dataset_train, dataset_valid = datasets(args)
-
-    #
-    # Log meta-data related to Data and Preprocessing.
-    #
-
-    # Log Train images with segments!
-    for i in range(args.vis_train_images):
-        image, mask = dataset_train.get_original_image(i)
-        # Log Images expects Shape for Image and Mask to be (N, C, H, W)
-        mask = mask.unsqueeze(0)
-        outline_image = log_images(image.unsqueeze(0), mask, torch.zeros_like(mask))[0]
-
-        # Prefix with `/` to ignore logger's namespace.
-        logger.log_train_image(f'/data/samples/image_{i}.png', outline_image)
-
-    # Log Preprocessing Params
-    logger.run['data/preprocessing_params'] = {'aug_angle': args.aug_angle,
-                                               'aug_scale': args.aug_scale,
-                                               'image_size': args.image_size,
-                                               'flip_prob': args.flip_prob,
-                                               'seed': args.seed}
-
-    loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
-    loaders = {"train": loader_train, "valid": loader_valid}
-
-    # Get Model for training
-    unet = UNet(in_channels=Dataset.in_channels, out_channels=Dataset.out_channels)
-    unet.to(device)
-    optimizer = optim.Adam(unet.parameters(), lr=args.lr)
-    dsc_loss = DiceLoss()
-
-    # Log training meta-data
-    logger.run['train/hyper_params'] = {'lr': args.lr,
-                                        'batch_size': args.batch_size, 'epochs': args.epochs}
-
-    best_validation_dsc = 0.0
-    loss_train = []
-    loss_valid = []
-    step = 0
-    for epoch in tqdm(range(args.epochs), total=args.epochs, desc="epoch:"):
-        for phase in ["train", "valid"]:
-            if phase == "train":
-                unet.train()
-            else:
-                unet.eval()
-
-            validation_pred = []
-            validation_true = []
-
-            for i, data in tqdm(enumerate(loaders[phase]),
-                                desc=phase,
-                                total=math.floor(len(loaders[phase].dataset)/args.batch_size)):
-                if phase == "train":
-                    step += 1
-
-                x, y_true = data
-                x, y_true = x.to(device), y_true.to(device)
-                assert x.max() <= 1. and y_true.max() <= 1.
-
-                optimizer.zero_grad()
-
-                with torch.set_grad_enabled(phase == "train"):
-                    y_pred = unet(x)
-
-                    loss = dsc_loss(y_pred, y_true)
-
-                    if phase == "valid":
-                        y_pred_np = y_pred.detach().cpu().numpy()
-                        validation_pred.extend(
-                            [y_pred_np[s] for s in range(y_pred_np.shape[0])]
-                        )
-                        y_true_np = y_true.detach().cpu().numpy()
-                        validation_true.extend(
-                            [y_true_np[s] for s in range(y_true_np.shape[0])]
-                        )
-                        if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
-                            if i * args.batch_size < args.vis_images:
-                                tag = "validation_prediction_epoch"
-                                num_images = args.vis_images - i * args.batch_size
-                                logger.upload_image_list(
-                                    tag,
-                                    log_images(x, y_true, y_pred)[:num_images],
-                                    epoch,
-                                    i * args.batch_size
-                                )
-
-                    if phase == "train":
-                        logger.log_training_scalar("metrics/train_loss", loss.item())
-                        loss.backward()
-                        optimizer.step()
-
-            if phase == "valid":
-                logger.log_training_scalar("metrics/valid_loss", loss.item())
-                try:
-                    mean_dsc = np.mean(
-                        dsc_per_volume(
-                            validation_pred,
-                            validation_true,
-                            loader_valid.dataset.patient_slice_index,
-                        )
-                    )
-                except Exception as e:
-                    mean_dsc = 0.
-                    print(e)
-
-                logger.log_training_scalar("metrics/val_dsc", mean_dsc)
-                if mean_dsc > best_validation_dsc:
-                    best_validation_dsc = mean_dsc
-                    torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
-
-    print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
+def datasets(args):
+    train = BrainSegmentationDataset(
+        images_dir=args.images,
+        subset="train",
+        image_size=args.image_size,
+        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
+        seed=args.seed
+    )
+    valid = BrainSegmentationDataset(
+        images_dir=args.images,
+        subset="validation",
+        image_size=args.image_size,
+        random_sampling=False,
+        seed=args.seed
+    )
+    return train, valid
 
 
 def data_loaders(dataset_train, dataset_valid, args):
@@ -195,23 +60,128 @@ def data_loaders(dataset_train, dataset_valid, args):
     return loader_train, loader_valid
 
 
-def datasets(args):
-    train = Dataset(
-        images_dir=args.images,
-        subset="train",
-        image_size=args.image_size,
-        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
-        seed=args.seed
+def main(args):
+    run = neptune.init(
+        project="common/Pytorch-ImageSegmentation-Unet",
+        # Ideally set the Environment Variable!
+        api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
+        source_files="*.py"  # Upload all `py` files.
     )
-    valid = Dataset(
-        images_dir=args.images,
-        subset="validation",
-        image_size=args.image_size,
-        random_sampling=False,
-        seed=args.seed
-    )
-    return train, valid
+    run["cli_args"] = vars(args)
+    device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
 
+    dataset_train, dataset_valid = datasets(args)
+
+    #
+    # Log meta-data related to Data and Preprocessing.
+    #
+
+    # Log Train images with segments!
+    for i in range(args.vis_train_images):
+        image, mask = dataset_train.get_original_image(i)
+        # Log Images expects Shape for Image and Mask to be (N, C, H, W)
+        mask = mask.unsqueeze(0)
+        outline_image = log_images(image.unsqueeze(0), mask, torch.zeros_like(mask))[0]
+
+        if outline_image.max() > 1:
+            outline_image = outline_image.astype(np.float32) / 255
+        run[f'data/samples/image_{i}.png'].upload(File.as_image(outline_image))
+
+    # Log Preprocessing Params
+    run['data/preprocessing_params'] = {'aug_angle': args.aug_angle,
+                                        'aug_scale': args.aug_scale,
+                                        'image_size': args.image_size,
+                                        'flip_prob': args.flip_prob,
+                                        'seed': args.seed}
+
+    loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
+    loaders = {"train": loader_train, "valid": loader_valid}
+
+    # Get Model for training
+    unet = UNet(in_channels=BrainSegmentationDataset.in_channels, out_channels=BrainSegmentationDataset.out_channels)
+    unet.to(device)
+    optimizer = optim.Adam(unet.parameters(), lr=args.lr)
+    dsc_loss = DiceLoss()
+
+    # Log training meta-data
+    run['train/hyper_params'] = {'lr': args.lr,
+                                 'batch_size': args.batch_size, 'epochs': args.epochs}
+
+    best_validation_dsc = 0.0
+    loss_train = []
+    loss_valid = []
+    # Train Loop
+    for epoch in tqdm(range(args.epochs), total=args.epochs, desc="epoch:"):
+        for phase in ["train", "valid"]:
+            unet.train() if phase == "train" else unet.eval()
+
+            validation_pred = []
+            validation_true = []
+
+            # Iterate over data in data-loaders
+            for i, data in tqdm(enumerate(loaders[phase]),
+                                desc=phase,
+                                total=math.floor(len(loaders[phase].dataset)/args.batch_size)):
+
+                x, y_true = data
+                x, y_true = x.to(device), y_true.to(device)
+                assert x.max() <= 1. and y_true.max() <= 1.
+
+                optimizer.zero_grad()
+
+                with torch.set_grad_enabled(phase == "train"):
+                    y_pred = unet(x)
+                    loss = dsc_loss(y_pred, y_true)
+
+                    if phase == "train":
+                        run["train/metrics/train_dice_loss"].log(loss.item())
+                        loss.backward()
+                        optimizer.step()
+                    else:  # valid phase
+                        y_pred_np = y_pred.detach().cpu().numpy()
+                        validation_pred.extend([y_pred_np[s] for s in range(y_pred_np.shape[0])])
+
+                        y_true_np = y_true.detach().cpu().numpy()
+                        validation_true.extend([y_true_np[s] for s in range(y_true_np.shape[0])])
+
+                        if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
+                            # If current `epoch` is a multiple of `vis_freq`.
+                            if i * args.batch_size < args.vis_images:
+                                tag = "validation_prediction_epoch"
+                                num_images = args.vis_images - i * args.batch_size
+                                images = log_images(x, y_true, y_pred)[:num_images]
+                                start_val = i * args.batch_size
+
+                                if len(images) == 0:
+                                    return
+
+                                for i, img in enumerate(images, start=start_val):
+                                    if img.max() > 1:
+                                        img = img.astype(np.float32)/255
+                                    run[f"train/validation_prediction_epoch_{epoch}/{i}.png"].upload(File.as_image(img))
+
+                    
+
+            if phase == "valid":
+                run["train/metrics/validation_dice_loss"].log(loss.item())
+                try:
+                    mean_dsc = np.mean(
+                        dsc_per_volume(
+                            validation_pred,
+                            validation_true,
+                            loader_valid.dataset.patient_slice_index,
+                        )
+                    )
+                except Exception as e:
+                    mean_dsc = 0.
+                    print(e)
+
+                run["train/metrics/validation_dice_coefficient"].log(mean_dsc)
+                if mean_dsc > best_validation_dsc:
+                    best_validation_dsc = mean_dsc
+                    torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
+
+    print("Best validation mean DSC: {:4f}".format(best_validation_dsc))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
