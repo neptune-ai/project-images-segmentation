@@ -65,9 +65,8 @@ def main(args):
     project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet", api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",)
 
     # (neptune) find last run
-    run_df = project.fetch_runs_table().to_pandas()
-    run_df = run_df[['sys/id', 'sys/creation_time']].sort_values("sys/creation_time", ascending=False)
-    run_id = run_df['sys/id'][0]
+    best_run_df = project.fetch_runs_table(tag="best").to_pandas()
+    best_run_id = best_run_df["sys/id"].values[0]
 
     # re-init the chosen run
     base_namespace = 'finetune'
@@ -76,9 +75,9 @@ def main(args):
         tags=["finetune"],
         # Ideally set the Environment Variable!
         api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
-        source_files=None, # Upload all `py` files.
+        source_files=None,
         monitoring_namespace=f"{base_namespace}/monitoring",
-        run=run_id
+        run=best_run_id
     )
     run["cli_args"] = vars(args)
 
@@ -299,7 +298,7 @@ if __name__ == "__main__":
         "--images", type=str, default="./data/", help="folder to download images"
     )
     parser.add_argument(
-        "--s3-images-path", type=str, default="s3://neptune-examples/data/brain-mri-dataset/v2/", help="s3 folder path"
+        "--s3-images-path", type=str, default="s3://neptune-examples/data/brain-mri-dataset/v3/", help="s3 folder path"
     )
     parser.add_argument(
         "--image-size",
