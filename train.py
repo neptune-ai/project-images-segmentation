@@ -21,14 +21,14 @@ import numpy as np
 
 def datasets(args):
     train = BrainSegmentationDataset(
-        images_dir=args.images,
+        images_dir=args.images + "train",
         subset="train",
         image_size=args.image_size,
         transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
         seed=args.seed
     )
     valid = BrainSegmentationDataset(
-        images_dir=args.images,
+        images_dir=args.images + "valid",
         subset="validation",
         image_size=args.image_size,
         random_sampling=False,
@@ -68,7 +68,9 @@ def main(args):
         source_files="*.py"  # Upload all `py` files.
     )
     run["cli_args"] = vars(args)
-    device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
+
+    run['data/version/train'].track_files(args.s3_images_path + "train")
+    run['data/version/valid'].track_files(args.s3_images_path + "valid")
 
     dataset_train, dataset_valid = datasets(args)
 
@@ -96,6 +98,8 @@ def main(args):
 
     loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
 
+    # Choose device for training.
+    device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
     # Get Model for training
     unet = UNet(in_channels=BrainSegmentationDataset.in_channels, out_channels=BrainSegmentationDataset.out_channels)
     unet.to(device)
@@ -106,7 +110,7 @@ def main(args):
     run['train/hyper_params'] = {'lr': args.lr,
                                  'batch_size': args.batch_size, 'epochs': args.epochs}
 
-    best_validation_dsc = 0.0
+    best_validation_dsc = None
     loss_train = []
     loss_valid = []
     # Train Loop
@@ -194,11 +198,9 @@ def main(args):
             print(e)
 
         run["train/metrics/validation_dice_coefficient"].log(mean_dsc)
-        if mean_dsc > best_validation_dsc:
+        if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
-            torch.save(unet.state_dict(), os.path.join(
-                args.weights, "unet.pt"))
-            print("Uploading Model")
+            torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
             run['train/best_model_weights/model_weight'].upload(os.path.join(
                 args.weights, "unet.pt"))
 
@@ -265,7 +267,10 @@ if __name__ == "__main__":
         "--logs", type=str, default="./logs", help="folder to save logs"
     )
     parser.add_argument(
-        "--images", type=str, default="./kaggle_3m", help="root folder with images"
+        "--images", type=str, default="./data/", help="folder to download images"
+    )
+    parser.add_argument(
+        "--s3-images-path", type=str, default="s3://neptune-examples/data/brain-mri-dataset/v3/", help="s3 folder path"
     )
     parser.add_argument(
         "--image-size",
