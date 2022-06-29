@@ -32,6 +32,7 @@ class BrainSegmentationDataset(Dataset):
         volumes = {}
         masks = {}
         self.volume_fnames = {}
+        img_cnt = 0
         print("reading {} images...".format(subset))
         for (dirpath, dirnames, filenames) in os.walk(images_dir):
             image_slices = []
@@ -47,6 +48,7 @@ class BrainSegmentationDataset(Dataset):
                 else:
                     image_slices.append(imread(filepath))
                     image_names.append(filename)
+                    img_cnt += 1
             if len(image_slices) > 0:
                 patient_id = dirpath.split("/")[-1]
                 volumes[patient_id] = np.array(image_slices[1:-1])
@@ -56,16 +58,6 @@ class BrainSegmentationDataset(Dataset):
         self.patients = sorted(volumes)
         self.volume_fnames
 
-        # select cases to subset
-        if not subset == "all":
-            random.seed(seed)
-            validation_patients = random.sample(self.patients, k=validation_cases)
-            if subset == "validation":
-                self.patients = validation_patients
-            else:
-                self.patients = sorted(
-                    list(set(self.patients).difference(validation_patients))
-                )
 
         print("preprocessing {} volumes...".format(subset))
         # create list of tuples (volume, mask)
