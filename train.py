@@ -219,6 +219,38 @@ def main(args):
         # Sync after every epoch
         run.sync()
 
+    # Tag as the best if `best_validation_dsc` was better than previous best
+    # (neptune) fetch project
+    project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet",
+                                  api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",)
+
+    # (neptune) find best run for given data version
+    best_run_df = project.fetch_runs_table(tag="best").to_pandas()
+    prev_best = np.nanmax(best_run_df[f"training/metrics/validation_dice_coefficient"])
+    best_validation_dsc = 1.0
+    # check if new model is new best
+    if best_validation_dsc is not None and best_validation_dsc > prev_best:
+        # If yes, add the best tag
+        run["sys/tags"].add("best")
+
+        best_run = neptune.init(
+            project="common/Pytorch-ImageSegmentation-Unet",
+            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
+            run=best_run_df["sys/id"].values[0]
+        )
+        # Update prev best run
+        best_run["sys/tags"].remove("best")
+
+        model_version = neptune.init_model_version(
+            model="PYTOR3-MOD",
+            project="common/Pytorch-ImageSegmentation-Unet",
+            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==", # your credentials
+        )
+        model_version['model_weight'].upload(os.path.join(
+                args.weights, "unet.pt"))
+        model_version['best_validation_dice_coefficient'] = best_validation_dsc
+        model_version["valid/dataset"].track_files(args.s3_images_path + "valid")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Training U-Net model for segmentation of brain MRI"
