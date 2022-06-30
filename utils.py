@@ -1,7 +1,8 @@
 import numpy as np
 from skimage.exposure import rescale_intensity
 from skimage.transform import resize
-
+from PIL import Image
+import PIL
 
 def dsc(y_pred, y_true):
     y_pred = np.round(y_pred).astype(int)
@@ -79,7 +80,7 @@ def resize_sample(x, size=256):
     volume = resize(
         volume,
         output_shape=out_shape,
-        order=2,
+        order=1,
         mode="constant",
         cval=0,
         anti_aliasing=False,
@@ -109,13 +110,12 @@ def gray2rgb(image):
 
 
 def outline(image, mask, color):
-    mask = np.round(mask)
-    yy, xx = np.nonzero(mask)
-    for y, x in zip(yy, xx):
-        if 0.0 < np.mean(mask[max(0, y - 1) : y + 2, max(0, x - 1) : x + 2]) < 1.0:
-            image[max(0, y) : y + 1, max(0, x) : x + 1] = color
-    return image
-
+    mask = np.round(mask).astype(bool)
+    m = np.zeros_like(image)
+    m[mask] = color
+    im = PIL.Image.fromarray(image)
+    m = PIL.Image.fromarray(m)
+    return np.array(PIL.Image.blend(im, m, alpha=0.3))
 
 def log_images(x, y_true, y_pred, channel=1):
     images = []

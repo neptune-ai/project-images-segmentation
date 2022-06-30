@@ -17,6 +17,7 @@ from utils import log_images, dsc, dsc_per_volume
 import neptune.new as neptune
 from neptune.new.types import File
 import numpy as np
+from torchviz import make_dot
 
 
 def datasets(args):
@@ -61,11 +62,13 @@ def data_loaders(dataset_train, dataset_valid, args):
 
 
 def main(args):
+    torch.manual_seed(args.seed)
     run = neptune.init(
         project="common/Pytorch-ImageSegmentation-Unet",
+        tags=["training"],
         # Ideally set the Environment Variable!
         api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
-        source_files="*.py"  # Upload all `py` files.
+        source_files="*.py",  # Upload all `py` files.
     )
     run["cli_args"] = vars(args)
 
@@ -106,8 +109,14 @@ def main(args):
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
     dsc_loss = DiceLoss()
 
+    y = unet(image.unsqueeze(0).to(device))
+    model_vis = make_dot(y.mean(), params=dict(unet.named_parameters()))
+    model_vis.format = "png"
+    model_vis.render("model_vis")
+    run["training/model/visualization"] = neptune.types.File("model_vis.png")
+
     # Log training meta-data
-    run['train/hyper_params'] = {'lr': args.lr,
+    run['training/hyper_params'] = {'lr': args.lr,
                                  'batch_size': args.batch_size, 'epochs': args.epochs}
 
     best_validation_dsc = None
@@ -131,7 +140,7 @@ def main(args):
             loss.backward()
             optimizer.step()
 
-            run["train/metrics/train_dice_loss"].log(loss.item())
+            run["training/metrics/train_dice_loss"].log(loss.item())
 
         # Validation
         unet.eval()
@@ -151,7 +160,7 @@ def main(args):
                 y_pred = unet(x)
                 loss = dsc_loss(y_pred, y_true)
 
-                run["train/metrics/validation_dice_loss"].log(loss.item())
+                run["training/metrics/validation_dice_loss"].log(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
                 validation_pred.extend([y_pred_np[s]
@@ -163,24 +172,26 @@ def main(args):
 
                 if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
                     # If current `epoch` is a multiple of `vis_freq`.
-                    if logged_images < args.vis_images:
-                        num_images = args.vis_images - logged_images
-                        images = log_images(x, y_true, y_pred)[:num_images]
 
-                        for i, img in enumerate(images):
+                    num_images = args.vis_images - logged_images
+                    images = log_images(x, y_true, y_pred)[:num_images]
+
+                    for i, img in enumerate(images):
+                        if logged_images < args.vis_images:
                             # Log only the images which
                             # 1. Have false positives
                             # 2. Or have some mask in the ground truth.
                             true_sum = y_true[i].sum()
                             pred_sum = y_pred[i].round().sum()
+
                             if not (true_sum == 0 and pred_sum == 0):
-                                # dice_coeff = 2 * (y_true[i] * y_pred[i]) / (true_sum + pred_sum)
                                 dice_coeff = dsc(y_pred_np[i], y_true_np[i])
 
                                 if img.max() > 1:
                                     img = img.astype(np.float32)/255
                                 fname = fnames[i]
-                                run[f"train/validation_prediction_evolution/{fname}"].log(
+                                fname = fname.replace(".tif", "")
+                                run[f"training/validation_prediction_progression/{fname}"].log(
                                     File.as_image(img), name=f"Dice: {dice_coeff}")
                                 logged_images += 1
 
@@ -197,13 +208,16 @@ def main(args):
             mean_dsc = 0.
             print(e)
 
-        run["train/metrics/validation_dice_coefficient"].log(mean_dsc)
+        run["training/metrics/validation_dice_coefficient"].log(mean_dsc)
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
             torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
-            run['train/best_model_weights/model_weight'].upload(os.path.join(
+            run["training/metrics/best_validation_dice_coefficient"] = best_validation_dsc
+            run['training/model/model_weight'].upload(os.path.join(
                 args.weights, "unet.pt"))
 
+        # Sync after every epoch
+        run.sync()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -218,8 +232,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=20,
-        help="number of epochs to train (default: 20)",
+        default=25,
+        help="number of epochs to train (default: 25)",
     )
     parser.add_argument(
         "--lr",
@@ -242,8 +256,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--vis-images",
         type=int,
-        default=200,
-        help="number of visualization images to save in log (default: 200)",
+        default=7,
+        help="number of visualization images to save in log (default: 7)",
     )
     parser.add_argument(
         "--vis-train-images",
@@ -254,8 +268,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--vis-freq",
         type=int,
-        default=1,
-        help="frequency of saving images to log file (default: 1)",
+        default=5,
+        help="frequency of saving images to log file (default: 5)",
     )
     parser.add_argument(
         "--weights", type=str, default="./weights", help="folder to save weights"
