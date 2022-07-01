@@ -63,11 +63,9 @@ def data_loaders(dataset_train, dataset_valid, args):
 
 def main(args):
     torch.manual_seed(args.seed)
-    run = neptune.init(
+    run = neptune.init_run(
         project="common/Pytorch-ImageSegmentation-Unet",
         tags=["training"],
-        # Ideally set the Environment Variable!
-        api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
         source_files="*.py",  # Upload all `py` files.
     )
     run["cli_args"] = vars(args)
@@ -221,30 +219,28 @@ def main(args):
 
     # Tag as the best if `best_validation_dsc` was better than previous best
     # (neptune) fetch project
-    project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet",
-                                  api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",)
+    project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet")
 
     # (neptune) find best run for given data version
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
-    prev_best = np.nanmax(best_run_df[f"training/metrics/validation_dice_coefficient"])
-    best_validation_dsc = 1.0
+    best_run = neptune.init_run(
+        project="common/Pytorch-ImageSegmentation-Unet",
+        run=best_run_df["sys/id"].values[0]
+    )
+    prev_best = best_run["training/metrics/best_validation_dice_coefficient"].fetch()
+
     # check if new model is new best
     if best_validation_dsc is not None and best_validation_dsc > prev_best:
         # If yes, add the best tag
         run["sys/tags"].add("best")
 
-        best_run = neptune.init(
-            project="common/Pytorch-ImageSegmentation-Unet",
-            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
-            run=best_run_df["sys/id"].values[0]
-        )
-        # Update prev best run
+        # Update prev best run.
         best_run["sys/tags"].remove("best")
 
+        # add current model as a new version in model registry.
         model_version = neptune.init_model_version(
             model="PYTOR3-MOD",
-            project="common/Pytorch-ImageSegmentation-Unet",
-            api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==", # your credentials
+            project="common/Pytorch-ImageSegmentation-Unet"
         )
         model_version['model_weight'].upload(os.path.join(
                 args.weights, "unet.pt"))

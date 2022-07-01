@@ -64,7 +64,7 @@ def main(args):
     torch.manual_seed(args.seed)
 
     # (neptune) fetch project
-    project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet", api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",)
+    project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet")
 
     # (neptune) find best run
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
@@ -75,8 +75,6 @@ def main(args):
     ref_run = neptune.init(
         project="common/Pytorch-ImageSegmentation-Unet",
         tags=["finetuning"],
-        # Ideally set the Environment Variable!
-        api_token="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiI4NTMwZGE1ZC02N2U5LTQxYjUtYTMxOC0zMGUyYTJkZTdhZDUifQ==",
         source_files=None,
         monitoring_namespace=f"{base_namespace}/monitoring",
         run=best_run_id
