@@ -24,15 +24,17 @@ def datasets(args):
         images_dir=args.images + "train",
         subset="train",
         image_size=args.image_size,
-        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
-        seed=args.seed
+        transform=transforms(
+            scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob
+        ),
+        seed=args.seed,
     )
     valid = BrainSegmentationDataset(
         images_dir=args.images + "valid",
         subset="validation",
         image_size=args.image_size,
         random_sampling=False,
-        seed=args.seed
+        seed=args.seed,
     )
     return train, valid
 
@@ -71,19 +73,19 @@ def main(args):
     best_run_id = best_run_df["sys/id"].values[0]
 
     # re-init the chosen run
-    base_namespace = 'finetuning'
+    base_namespace = "finetuning"
     ref_run = neptune.init(
         project="common/Pytorch-ImageSegmentation-Unet",
         tags=["finetuning"],
         source_files=None,
         monitoring_namespace=f"{base_namespace}/monitoring",
-        run=best_run_id
+        run=best_run_id,
     )
     ref_run["cli_args"] = vars(args)
 
     # Track Finetuning data
-    ref_run['finetuning/data/version/train'].track_files(args.s3_images_path + "train")
-    ref_run['finetuning/data/version/valid'].track_files(args.s3_images_path + "valid")
+    ref_run["finetuning/data/version/train"].track_files(args.s3_images_path + "train")
+    ref_run["finetuning/data/version/valid"].track_files(args.s3_images_path + "valid")
 
     # Load Data
     dataset_train, dataset_valid = datasets(args)
@@ -102,25 +104,32 @@ def main(args):
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
         # Log sample images with mask outline
-        ref_run[f'finetune/data/samples/images'].log(File.as_image(outline_image), name=fname)
+        ref_run[f"finetune/data/samples/images"].log(
+            File.as_image(outline_image), name=fname
+        )
 
     # Log Preprocessing Params
-    ref_run['finetune/data/preprocessing_params'] = {'aug_angle': args.aug_angle,
-                                        'aug_scale': args.aug_scale,
-                                        'image_size': args.image_size,
-                                        'flip_prob': args.flip_prob,
-                                        'seed': args.seed}
+    ref_run["finetune/data/preprocessing_params"] = {
+        "aug_angle": args.aug_angle,
+        "aug_scale": args.aug_scale,
+        "image_size": args.image_size,
+        "flip_prob": args.flip_prob,
+        "seed": args.seed,
+    }
 
     loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
 
     # Choose device for training.
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
     # Get Model for training
-    unet = UNet(in_channels=BrainSegmentationDataset.in_channels, out_channels=BrainSegmentationDataset.out_channels)
+    unet = UNet(
+        in_channels=BrainSegmentationDataset.in_channels,
+        out_channels=BrainSegmentationDataset.out_channels,
+    )
     unet.to(device)
 
     # Download the weights from the `train` run
-    ref_run['training/model/model_weight'].download("best_unet.pt")
+    ref_run["training/model/model_weight"].download("best_unet.pt")
     ref_run.wait()
 
     # Load the downloaded weights
@@ -131,8 +140,11 @@ def main(args):
     dsc_loss = DiceLoss()
 
     # Log training meta-data
-    ref_run['finetuning/hyper_params'] = {'lr': args.lr,
-                                 'batch_size': args.batch_size, 'epochs': args.epochs}
+    ref_run["finetuning/hyper_params"] = {
+        "lr": args.lr,
+        "batch_size": args.batch_size,
+        "epochs": args.epochs,
+    }
 
     best_validation_dsc = None
     loss_train = []
@@ -142,12 +154,14 @@ def main(args):
         # Train
         unet.train()
         # Iterate over data in data-loaders
-        for i, data in tqdm(enumerate(loader_train),
-                            desc='train',
-                            total=math.floor(len(loader_train.dataset)/args.batch_size)):
+        for i, data in tqdm(
+            enumerate(loader_train),
+            desc="train",
+            total=math.floor(len(loader_train.dataset) / args.batch_size),
+        ):
             x, y_true, fnames = data
             x, y_true = x.to(device), y_true.to(device)
-            assert x.max() <= 1. and y_true.max() <= 1.
+            assert x.max() <= 1.0 and y_true.max() <= 1.0
 
             optimizer.zero_grad()
             y_pred = unet(x)
@@ -163,12 +177,14 @@ def main(args):
         validation_pred = []
         validation_true = []
         logged_images = 0
-        for i, data in tqdm(enumerate(loader_valid),
-                            desc='valid',
-                            total=math.floor(len(loader_valid.dataset)/args.batch_size)):
+        for i, data in tqdm(
+            enumerate(loader_valid),
+            desc="valid",
+            total=math.floor(len(loader_valid.dataset) / args.batch_size),
+        ):
             x, y_true, fnames = data
             x, y_true = x.to(device), y_true.to(device)
-            assert x.max() <= 1. and y_true.max() <= 1.
+            assert x.max() <= 1.0 and y_true.max() <= 1.0
 
             optimizer.zero_grad()
 
@@ -180,12 +196,14 @@ def main(args):
                 ref_run["finetuning/metrics/validation_dice_loss"].log(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
-                validation_pred.extend([y_pred_np[s]
-                                       for s in range(y_pred_np.shape[0])])
+                validation_pred.extend(
+                    [y_pred_np[s] for s in range(y_pred_np.shape[0])]
+                )
 
                 y_true_np = y_true.detach().cpu().numpy()
-                validation_true.extend([y_true_np[s]
-                                       for s in range(y_true_np.shape[0])])
+                validation_true.extend(
+                    [y_true_np[s] for s in range(y_true_np.shape[0])]
+                )
 
                 if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
                     # If current `epoch` is a multiple of `vis_freq`.
@@ -204,12 +222,13 @@ def main(args):
                                 dice_coeff = dsc(y_pred_np[i], y_true_np[i])
 
                                 if img.max() > 1:
-                                    img = img.astype(np.float32)/255
+                                    img = img.astype(np.float32) / 255
                                 fname = fnames[i]
                                 fname = fname.replace(".tif", "")
                                 # Log to finetune namespace
-                                ref_run[f"finetuning/validation_prediction_progression/{fname}"].log(
-                                    File.as_image(img), name=f"Dice: {dice_coeff}")
+                                ref_run[
+                                    f"finetuning/validation_prediction_progression/{fname}"
+                                ].log(File.as_image(img), name=f"Dice: {dice_coeff}")
                                 logged_images += 1
 
         try:
@@ -222,17 +241,22 @@ def main(args):
                 )
             )
         except Exception as e:
-            mean_dsc = 0.
+            mean_dsc = 0.0
             print(e)
 
         ref_run["finetuning/metrics/validation_dice_coefficient"].log(mean_dsc)
 
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
-            ref_run["finetuning/metrics/best_validation_dice_coefficient"] = best_validation_dsc
-            torch.save(unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt"))
-            ref_run['finetuning/best_model_weights/model_weight'].upload(os.path.join(
-                args.weights, "finetune_unet.pt"))
+            ref_run[
+                "finetuning/metrics/best_validation_dice_coefficient"
+            ] = best_validation_dsc
+            torch.save(
+                unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt")
+            )
+            ref_run["finetuning/best_model_weights/model_weight"].upload(
+                os.path.join(args.weights, "finetune_unet.pt")
+            )
 
 
 if __name__ == "__main__":
@@ -290,9 +314,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weights", type=str, default="./weights", help="folder to save weights"
     )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="random seed"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
     parser.add_argument(
         "--logs", type=str, default="./logs", help="folder to save logs"
     )
@@ -300,7 +322,10 @@ if __name__ == "__main__":
         "--images", type=str, default="./data/", help="folder to download images"
     )
     parser.add_argument(
-        "--s3-images-path", type=str, default="s3://neptune-examples/data/brain-mri-dataset/v3/", help="s3 folder path"
+        "--s3-images-path",
+        type=str,
+        default="s3://neptune-examples/data/brain-mri-dataset/v3/",
+        help="s3 folder path",
     )
     parser.add_argument(
         "--image-size",

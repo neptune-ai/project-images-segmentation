@@ -58,7 +58,6 @@ class BrainSegmentationDataset(Dataset):
         self.patients = sorted(volumes)
         self.volume_fnames
 
-
         print("preprocessing {} volumes...".format(subset))
         # create list of tuples (volume, mask)
         self.volumes = [(volumes[k], masks[k]) for k in self.patients]
@@ -73,7 +72,9 @@ class BrainSegmentationDataset(Dataset):
 
         print("resizing {} volumes...".format(subset))
         # resize
-        self.volumes = [resize_sample(v, size=image_size) for v in tqdm.tqdm(self.volumes)]
+        self.volumes = [
+            resize_sample(v, size=image_size) for v in tqdm.tqdm(self.volumes)
+        ]
 
         print("normalizing {} volumes...".format(subset))
         # normalize channel-wise
@@ -128,8 +129,8 @@ class BrainSegmentationDataset(Dataset):
         image = image.transpose(2, 0, 1)
         mask = mask.transpose(2, 0, 1)
 
-        image_tensor = torch.from_numpy(image.astype(np.float32)) / 255.
-        mask_tensor = torch.from_numpy(mask.astype(np.float32)) / 255.
+        image_tensor = torch.from_numpy(image.astype(np.float32)) / 255.0
+        mask_tensor = torch.from_numpy(mask.astype(np.float32)) / 255.0
 
         # return tensors
         return image_tensor, mask_tensor, fname

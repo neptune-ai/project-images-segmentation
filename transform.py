@@ -17,7 +17,6 @@ def transforms(scale=None, angle=None, flip_prob=None):
 
 
 class Scale(object):
-
     def __init__(self, scale):
         self.scale = scale
 
@@ -61,7 +60,6 @@ class Scale(object):
 
 
 class Rotate(object):
-
     def __init__(self, angle):
         self.angle = angle
 
@@ -77,7 +75,6 @@ class Rotate(object):
 
 
 class HorizontalFlip(object):
-
     def __init__(self, flip_prob):
         self.flip_prob = flip_prob
 

@@ -4,6 +4,7 @@ from skimage.transform import resize
 from PIL import Image
 import PIL
 
+
 def dsc(y_pred, y_true):
     y_pred = np.round(y_pred).astype(int)
     y_true = np.round(y_true).astype(int)
@@ -116,6 +117,7 @@ def outline(image, mask, color):
     im = PIL.Image.fromarray(image)
     m = PIL.Image.fromarray(m)
     return np.array(PIL.Image.blend(im, m, alpha=0.3))
+
 
 def log_images(x, y_true, y_pred, channel=1):
     images = []

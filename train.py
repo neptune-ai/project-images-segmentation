@@ -25,15 +25,17 @@ def datasets(args):
         images_dir=args.images + "train",
         subset="train",
         image_size=args.image_size,
-        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
-        seed=args.seed
+        transform=transforms(
+            scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob
+        ),
+        seed=args.seed,
     )
     valid = BrainSegmentationDataset(
         images_dir=args.images + "valid",
         subset="validation",
         image_size=args.image_size,
         random_sampling=False,
-        seed=args.seed
+        seed=args.seed,
     )
     return train, valid
 
@@ -70,8 +72,8 @@ def main(args):
     )
     run["cli_args"] = vars(args)
 
-    run['data/version/train'].track_files(args.s3_images_path + "train")
-    run['data/version/valid'].track_files(args.s3_images_path + "valid")
+    run["data/version/train"].track_files(args.s3_images_path + "train")
+    run["data/version/valid"].track_files(args.s3_images_path + "valid")
 
     dataset_train, dataset_valid = datasets(args)
 
@@ -88,21 +90,26 @@ def main(args):
 
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
-        run[f'data/samples/images'].log(File.as_image(outline_image), name=fname)
+        run[f"data/samples/images"].log(File.as_image(outline_image), name=fname)
 
     # Log Preprocessing Params
-    run['data/preprocessing_params'] = {'aug_angle': args.aug_angle,
-                                        'aug_scale': args.aug_scale,
-                                        'image_size': args.image_size,
-                                        'flip_prob': args.flip_prob,
-                                        'seed': args.seed}
+    run["data/preprocessing_params"] = {
+        "aug_angle": args.aug_angle,
+        "aug_scale": args.aug_scale,
+        "image_size": args.image_size,
+        "flip_prob": args.flip_prob,
+        "seed": args.seed,
+    }
 
     loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
 
     # Choose device for training.
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
     # Get Model for training
-    unet = UNet(in_channels=BrainSegmentationDataset.in_channels, out_channels=BrainSegmentationDataset.out_channels)
+    unet = UNet(
+        in_channels=BrainSegmentationDataset.in_channels,
+        out_channels=BrainSegmentationDataset.out_channels,
+    )
     unet.to(device)
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
     dsc_loss = DiceLoss()
@@ -114,8 +121,11 @@ def main(args):
     run["training/model/visualization"] = neptune.types.File("model_vis.png")
 
     # Log training meta-data
-    run['training/hyper_params'] = {'lr': args.lr,
-                                 'batch_size': args.batch_size, 'epochs': args.epochs}
+    run["training/hyper_params"] = {
+        "lr": args.lr,
+        "batch_size": args.batch_size,
+        "epochs": args.epochs,
+    }
 
     best_validation_dsc = None
     loss_train = []
@@ -125,12 +135,14 @@ def main(args):
         # Train
         unet.train()
         # Iterate over data in data-loaders
-        for i, data in tqdm(enumerate(loader_train),
-                            desc='train',
-                            total=math.floor(len(loader_train.dataset)/args.batch_size)):
+        for i, data in tqdm(
+            enumerate(loader_train),
+            desc="train",
+            total=math.floor(len(loader_train.dataset) / args.batch_size),
+        ):
             x, y_true, fnames = data
             x, y_true = x.to(device), y_true.to(device)
-            assert x.max() <= 1. and y_true.max() <= 1.
+            assert x.max() <= 1.0 and y_true.max() <= 1.0
 
             optimizer.zero_grad()
             y_pred = unet(x)
@@ -145,12 +157,14 @@ def main(args):
         validation_pred = []
         validation_true = []
         logged_images = 0
-        for i, data in tqdm(enumerate(loader_valid),
-                            desc='valid',
-                            total=math.floor(len(loader_valid.dataset)/args.batch_size)):
+        for i, data in tqdm(
+            enumerate(loader_valid),
+            desc="valid",
+            total=math.floor(len(loader_valid.dataset) / args.batch_size),
+        ):
             x, y_true, fnames = data
             x, y_true = x.to(device), y_true.to(device)
-            assert x.max() <= 1. and y_true.max() <= 1.
+            assert x.max() <= 1.0 and y_true.max() <= 1.0
 
             optimizer.zero_grad()
 
@@ -161,12 +175,14 @@ def main(args):
                 run["training/metrics/validation_dice_loss"].log(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
-                validation_pred.extend([y_pred_np[s]
-                                       for s in range(y_pred_np.shape[0])])
+                validation_pred.extend(
+                    [y_pred_np[s] for s in range(y_pred_np.shape[0])]
+                )
 
                 y_true_np = y_true.detach().cpu().numpy()
-                validation_true.extend([y_true_np[s]
-                                       for s in range(y_true_np.shape[0])])
+                validation_true.extend(
+                    [y_true_np[s] for s in range(y_true_np.shape[0])]
+                )
 
                 if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
                     # If current `epoch` is a multiple of `vis_freq`.
@@ -186,11 +202,17 @@ def main(args):
                                 dice_coeff = dsc(y_pred_np[i], y_true_np[i])
 
                                 if img.max() > 1:
-                                    img = img.astype(np.float32)/255
+                                    img = img.astype(np.float32) / 255
                                 fname = fnames[i]
                                 fname = fname.replace(".tif", "")
-                                run[f"training/validation_prediction_progression/{fname}"].log(
-                                    File.as_image(img), name=f"Dice: {dice_coeff}")
+                                desc = f"Epoch: {epoch}\nPatient: {fname[:-3]}\nImage No: {fname[-2:]}"
+                                run[
+                                    f"training/validation_prediction_progression/{fname}"
+                                ].log(
+                                    File.as_image(img),
+                                    name=f"Dice: {dice_coeff}",
+                                    description=desc,
+                                )
                                 logged_images += 1
 
         try:
@@ -203,16 +225,19 @@ def main(args):
                 )
             )
         except Exception as e:
-            mean_dsc = 0.
+            mean_dsc = 0.0
             print(e)
 
         run["training/metrics/validation_dice_coefficient"].log(mean_dsc)
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
             torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
-            run["training/metrics/best_validation_dice_coefficient"] = best_validation_dsc
-            run['training/model/model_weight'].upload(os.path.join(
-                args.weights, "unet.pt"))
+            run[
+                "training/metrics/best_validation_dice_coefficient"
+            ] = best_validation_dsc
+            run["training/model/model_weight"].upload(
+                os.path.join(args.weights, "unet.pt")
+            )
 
         # Sync after every epoch
         run.sync()
@@ -225,7 +250,7 @@ def main(args):
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
     best_run = neptune.init_run(
         project="common/Pytorch-ImageSegmentation-Unet",
-        run=best_run_df["sys/id"].values[0]
+        run=best_run_df["sys/id"].values[0],
     )
     prev_best = best_run["training/metrics/best_validation_dice_coefficient"].fetch()
 
@@ -239,13 +264,12 @@ def main(args):
 
         # add current model as a new version in model registry.
         model_version = neptune.init_model_version(
-            model="PYTOR3-MOD",
-            project="common/Pytorch-ImageSegmentation-Unet"
+            model="PYTOR3-MOD", project="common/Pytorch-ImageSegmentation-Unet"
         )
-        model_version['model_weight'].upload(os.path.join(
-                args.weights, "unet.pt"))
-        model_version['best_validation_dice_coefficient'] = best_validation_dsc
+        model_version["model_weight"].upload(os.path.join(args.weights, "unet.pt"))
+        model_version["best_validation_dice_coefficient"] = best_validation_dsc
         model_version["valid/dataset"].track_files(args.s3_images_path + "valid")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -302,9 +326,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--weights", type=str, default="./weights", help="folder to save weights"
     )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="random seed"
-    )
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
     parser.add_argument(
         "--logs", type=str, default="./logs", help="folder to save logs"
     )
@@ -312,7 +334,10 @@ if __name__ == "__main__":
         "--images", type=str, default="./data/", help="folder to download images"
     )
     parser.add_argument(
-        "--s3-images-path", type=str, default="s3://neptune-examples/data/brain-mri-dataset/v3/", help="s3 folder path"
+        "--s3-images-path",
+        type=str,
+        default="s3://neptune-examples/data/brain-mri-dataset/v3/",
+        help="s3 folder path",
     )
     parser.add_argument(
         "--image-size",
