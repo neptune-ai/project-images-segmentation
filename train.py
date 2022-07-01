@@ -205,7 +205,8 @@ def main(args):
                                     img = img.astype(np.float32) / 255
                                 fname = fnames[i]
                                 fname = fname.replace(".tif", "")
-                                desc = f"Epoch: {epoch}\nPatient: {fname[:-3]}\nImage No: {fname[-2:]}"
+                                img_no = fname[fname.rfind("_") + 1 :]
+                                desc = f"Epoch: {epoch}\nPatient: {fname[:-3]}\nImage No: {img_no}"
                                 run[
                                     f"training/validation_prediction_progression/{fname}"
                                 ].log(

@@ -225,10 +225,16 @@ def main(args):
                                     img = img.astype(np.float32) / 255
                                 fname = fnames[i]
                                 fname = fname.replace(".tif", "")
+                                img_no = fname[fname.rfind("_") + 1 :]
+                                desc = f"Epoch: {epoch}\nPatient: {fname[:-3]}\nImage No: {img_no}"
                                 # Log to finetune namespace
                                 ref_run[
                                     f"finetuning/validation_prediction_progression/{fname}"
-                                ].log(File.as_image(img), name=f"Dice: {dice_coeff}")
+                                ].log(
+                                    File.as_image(img),
+                                    name=f"Dice: {dice_coeff}",
+                                    description=desc,
+                                )
                                 logged_images += 1
 
         try:
