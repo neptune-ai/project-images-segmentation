@@ -72,7 +72,7 @@ def main(args):
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
     best_run_id = best_run_df["sys/id"].values[0]
 
-    # re-init the chosen run
+    # (neptune) re-init the chosen run
     base_namespace = "finetuning"
     ref_run = neptune.init_run(
         project="common/Pytorch-ImageSegmentation-Unet",
@@ -81,9 +81,10 @@ def main(args):
         monitoring_namespace=f"{base_namespace}/monitoring",
         run=best_run_id,
     )
+    # (neptune) log cli args
     ref_run["finetuning/raw_data/cli_args"] = vars(args)
 
-    # Track Finetuning data
+    # (neptune) Track Finetuning data
     ref_run["finetuning/data/version/train"].track_files(args.s3_images_path + "train")
     ref_run["finetuning/data/version/valid"].track_files(args.s3_images_path + "valid")
 
@@ -97,18 +98,18 @@ def main(args):
     # Log Train images with segments!
     for i in range(args.vis_train_images):
         image, mask, fname = dataset_train.get_original_image(i)
-        # Log Images expects Shape for Image and Mask to be (N, C, H, W)
+        # `log_images`` expects Shape for Image and Mask to be (N, C, H, W)
         mask = mask.unsqueeze(0)
         outline_image = log_images(image.unsqueeze(0), mask, torch.zeros_like(mask))[0]
 
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
-        # Log sample images with mask outline
+        # (neptune) Log sample images with mask overlay
         ref_run[f"finetune/data/samples/images"].log(
             File.as_image(outline_image), name=fname
         )
 
-    # Log Preprocessing Params
+    # (neptune) Log Preprocessing Params
     ref_run["finetune/data/preprocessing_params"] = {
         "aug_angle": args.aug_angle,
         "aug_scale": args.aug_scale,
@@ -128,7 +129,7 @@ def main(args):
     )
     unet.to(device)
 
-    # Download the weights from the `train` run
+    # (neptune) Download the weights from the `train` run
     ref_run["training/model/model_weight"].download("best_unet.pt")
     ref_run.wait()
 
@@ -139,7 +140,7 @@ def main(args):
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
     dsc_loss = DiceLoss()
 
-    # Log training meta-data
+    # (neptune) Log training hyper params
     ref_run["finetuning/hyper_params"] = {
         "lr": args.lr,
         "batch_size": args.batch_size,
@@ -169,7 +170,7 @@ def main(args):
             loss.backward()
             optimizer.step()
 
-            # Log to finetune namespace
+            # (neptune) Log train loss to finetune namespace
             ref_run["finetuning/metrics/train_dice_loss"].log(loss.item())
 
         # Validation
@@ -192,7 +193,7 @@ def main(args):
                 y_pred = unet(x)
                 loss = dsc_loss(y_pred, y_true)
 
-                # Log to finetune namespace
+                # (neptune) Log validation lsos to finetune namespace
                 ref_run["finetuning/metrics/validation_dice_loss"].log(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
@@ -218,7 +219,6 @@ def main(args):
                             true_sum = y_true[i].sum()
                             pred_sum = y_pred[i].round().sum()
                             if not (true_sum == 0 and pred_sum == 0):
-                                # dice_coeff = 2 * (y_true[i] * y_pred[i]) / (true_sum + pred_sum)
                                 dice_coeff = dsc(y_pred_np[i], y_true_np[i])
 
                                 if img.max() > 1:
@@ -228,7 +228,7 @@ def main(args):
                                 img_no = fname[fname.rfind("_") + 1 :]
                                 patient_name = fname[: fname.rfind("_")]
                                 desc = f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
-                                # Log to finetune namespace
+                                # (neptune) Log prediction and ground-truth on original image
                                 ref_run[
                                     f"finetuning/validation_prediction_progression/{fname}"
                                 ].log(
@@ -239,6 +239,7 @@ def main(args):
                                 logged_images += 1
 
         try:
+            # Dice Segmentation Coeff
             # DSC per patient volume
             mean_dsc = np.mean(
                 dsc_per_volume(
@@ -255,13 +256,15 @@ def main(args):
 
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
+            # (neptune) log best_validation_dice_coefficient
             ref_run[
                 "finetuning/metrics/best_validation_dice_coefficient"
             ] = best_validation_dsc
             torch.save(
                 unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt")
             )
-            ref_run["finetuning/best_model_weights/model_weight"].upload(
+            # (neptune) upload best fine-tuned weights
+            ref_run["finetuning/model/model_weight"].upload(
                 os.path.join(args.weights, "finetune_unet.pt")
             )
 

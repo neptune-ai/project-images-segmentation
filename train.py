@@ -65,13 +65,18 @@ def data_loaders(dataset_train, dataset_valid, args):
 
 def main(args):
     torch.manual_seed(args.seed)
+
+    # (neptune) init new run
     run = neptune.init_run(
         project="common/Pytorch-ImageSegmentation-Unet",
         tags=["training"],
         source_files="*.py",  # Upload all `py` files.
     )
+
+    # (neptune) log the cli args
     run["raw_data/cli_args"] = vars(args)
 
+    # (neptune) track hash of the training data.
     run["data/version/train"].track_files(args.s3_images_path + "train")
     run["data/version/valid"].track_files(args.s3_images_path + "valid")
 
@@ -84,15 +89,16 @@ def main(args):
     # Log Train images with segments!
     for i in range(args.vis_train_images):
         image, mask, fname = dataset_train.get_original_image(i)
-        # Log Images expects Shape for Image and Mask to be (N, C, H, W)
+        # `log_images` expects Shape for Image and Mask to be (N, C, H, W)
         mask = mask.unsqueeze(0)
         outline_image = log_images(image.unsqueeze(0), mask, torch.zeros_like(mask))[0]
 
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
+        # (neptune) Log sample images with mask overlay
         run[f"data/samples/images"].log(File.as_image(outline_image), name=fname)
 
-    # Log Preprocessing Params
+    # (neptune) Log Preprocessing Params
     run["data/preprocessing_params"] = {
         "aug_angle": args.aug_angle,
         "aug_scale": args.aug_scale,
@@ -118,9 +124,10 @@ def main(args):
     model_vis = make_dot(y.mean(), params=dict(unet.named_parameters()))
     model_vis.format = "png"
     model_vis.render("model_vis")
+    # (neptune) Log model visualization
     run["training/model/visualization"] = neptune.types.File("model_vis.png")
 
-    # Log training meta-data
+    # (neptune) Log training meta-data
     run["training/hyper_params"] = {
         "lr": args.lr,
         "batch_size": args.batch_size,
@@ -150,6 +157,7 @@ def main(args):
             loss.backward()
             optimizer.step()
 
+            # (neptune) Log train loss after every step
             run["training/metrics/train_dice_loss"].log(loss.item())
 
         # Validation
@@ -172,6 +180,7 @@ def main(args):
                 y_pred = unet(x)
                 loss = dsc_loss(y_pred, y_true)
 
+                # (neptune) Log valid loss after every step
                 run["training/metrics/validation_dice_loss"].log(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
@@ -208,6 +217,7 @@ def main(args):
                                 img_no = fname[fname.rfind("_") + 1 :]
                                 patient_name = fname[: fname.rfind("_")]
                                 desc = f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
+                                # (neptune) Log prediction and ground-truth on original image
                                 run[
                                     f"training/validation_prediction_progression/{fname}"
                                 ].log(
@@ -218,6 +228,7 @@ def main(args):
                                 logged_images += 1
 
         try:
+            # Dice Segmentation Coeff
             # DSC per patient volume
             mean_dsc = np.mean(
                 dsc_per_volume(
@@ -232,11 +243,15 @@ def main(args):
 
         run["training/metrics/validation_dice_coefficient"].log(mean_dsc)
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
+            # If we have the best_validation_dsc yet, then save the weights and
+            # corresponding dice coefficient
             best_validation_dsc = mean_dsc
             torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
+            # (neptune) log best_validation_dice_coefficient
             run[
                 "training/metrics/best_validation_dice_coefficient"
             ] = best_validation_dsc
+            # (neptune) upload best fine-tuned weights
             run["training/model/model_weight"].upload(
                 os.path.join(args.weights, "unet.pt")
             )
@@ -258,13 +273,13 @@ def main(args):
 
     # check if new model is new best
     if best_validation_dsc is not None and best_validation_dsc > prev_best:
-        # If yes, add the best tag
+        # (neptune) If yes, add the best tag
         run["sys/tags"].add("best")
 
-        # Update prev best run.
+        # (neptune) Update prev best run.
         best_run["sys/tags"].remove("best")
 
-        # add current model as a new version in model registry.
+        # (neptune) add current model as a new version in model registry.
         model_version = neptune.init_model_version(
             model="PYTOR3-MOD", project="common/Pytorch-ImageSegmentation-Unet"
         )
