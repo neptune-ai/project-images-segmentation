@@ -70,7 +70,7 @@ def main(args):
         tags=["training"],
         source_files="*.py",  # Upload all `py` files.
     )
-    run["cli_args"] = vars(args)
+    run["raw_data/cli_args"] = vars(args)
 
     run["data/version/train"].track_files(args.s3_images_path + "train")
     run["data/version/valid"].track_files(args.s3_images_path + "valid")
@@ -206,7 +206,8 @@ def main(args):
                                 fname = fnames[i]
                                 fname = fname.replace(".tif", "")
                                 img_no = fname[fname.rfind("_") + 1 :]
-                                desc = f"Epoch: {epoch}\nPatient: {fname[:-3]}\nImage No: {img_no}"
+                                patient_name = fname[: fname.rfind("_")]
+                                desc = f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
                                 run[
                                     f"training/validation_prediction_progression/{fname}"
                                 ].log(

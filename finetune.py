@@ -81,7 +81,7 @@ def main(args):
         monitoring_namespace=f"{base_namespace}/monitoring",
         run=best_run_id,
     )
-    ref_run["cli_args"] = vars(args)
+    ref_run["finetuning/raw_data/cli_args"] = vars(args)
 
     # Track Finetuning data
     ref_run["finetuning/data/version/train"].track_files(args.s3_images_path + "train")
@@ -226,7 +226,8 @@ def main(args):
                                 fname = fnames[i]
                                 fname = fname.replace(".tif", "")
                                 img_no = fname[fname.rfind("_") + 1 :]
-                                desc = f"Epoch: {epoch}\nPatient: {fname[:-3]}\nImage No: {img_no}"
+                                patient_name = fname[: fname.rfind("_")]
+                                desc = f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
                                 # Log to finetune namespace
                                 ref_run[
                                     f"finetuning/validation_prediction_progression/{fname}"
