@@ -3,7 +3,6 @@ import random
 
 import neptune.new as neptune
 
-print("TOKEN HAS VALUE", len(os.getenv("NEPTUNE_API_TOKEN")))
 # Fetch project
 project = neptune.get_project(
     api_token=os.getenv('NEPTUNE_API_TOKEN'),
