@@ -65,6 +65,10 @@ def data_loaders(dataset_train, dataset_valid, args):
 def main(args):
     torch.manual_seed(args.seed)
 
+    ##########################################
+    # Fetch Previous Best Run for Finetuning #
+    ##########################################
+
     # (neptune) fetch project
     project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet")
 
@@ -88,14 +92,14 @@ def main(args):
     ref_run["finetuning/data/version/train"].track_files(args.s3_images_path + "train")
     ref_run["finetuning/data/version/valid"].track_files(args.s3_images_path + "valid")
 
+    ##########################################
+    # Get Data for training and log samples  #
+    ##########################################
+
     # Load Data
     dataset_train, dataset_valid = datasets(args)
 
-    #
-    # Log meta-data related to Data and Preprocessing.
-    #
-
-    # Log Train images with segments!
+    # Log Train images with mask overlay!
     for i in range(args.vis_train_images):
         image, mask, fname = dataset_train.get_original_image(i)
         # `log_images`` expects Shape for Image and Mask to be (N, C, H, W)
@@ -120,9 +124,13 @@ def main(args):
 
     loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
 
+    ##########################
+    # Get Model for training #
+    ##########################
+
     # Choose device for training.
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
-    # Get Model for training
+
     unet = UNet(
         in_channels=BrainSegmentationDataset.in_channels,
         out_channels=BrainSegmentationDataset.out_channels,
@@ -150,9 +158,15 @@ def main(args):
     best_validation_dsc = None
     loss_train = []
     loss_valid = []
-    # Resume train loop
+
+    ##############
+    # Train Loop #
+    ##############
+
     for epoch in tqdm(range(args.epochs), total=args.epochs, desc="epoch:"):
-        # Train
+        ###############
+        # Train Phase #
+        ###############
         unet.train()
         # Iterate over data in data-loaders
         for i, data in tqdm(
@@ -173,7 +187,9 @@ def main(args):
             # (neptune) Log train loss to finetune namespace
             ref_run["finetuning/metrics/train_dice_loss"].log(loss.item())
 
-        # Validation
+        ####################
+        # Validation Phase #
+        ####################
         unet.eval()
         validation_pred = []
         validation_true = []
@@ -238,9 +254,9 @@ def main(args):
                                 )
                                 logged_images += 1
 
+        # Get mean dice segmentation coeff
+        # per patient volume on validation set
         try:
-            # Dice Segmentation Coeff
-            # DSC per patient volume
             mean_dsc = np.mean(
                 dsc_per_volume(
                     validation_pred,

@@ -80,11 +80,11 @@ def main(args):
     run["data/version/train"].track_files(args.s3_images_path + "train")
     run["data/version/valid"].track_files(args.s3_images_path + "valid")
 
-    dataset_train, dataset_valid = datasets(args)
+    ##########################################
+    # Get Data for training and log samples  #
+    ##########################################
 
-    #
-    # Log meta-data related to Data and Preprocessing.
-    #
+    dataset_train, dataset_valid = datasets(args)
 
     # Log Train images with segments!
     for i in range(args.vis_train_images):
@@ -109,9 +109,13 @@ def main(args):
 
     loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
 
+    ##########################
+    # Get Model for training #
+    ##########################
+
     # Choose device for training.
     device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
-    # Get Model for training
+
     unet = UNet(
         in_channels=BrainSegmentationDataset.in_channels,
         out_channels=BrainSegmentationDataset.out_channels,
@@ -137,9 +141,15 @@ def main(args):
     best_validation_dsc = None
     loss_train = []
     loss_valid = []
-    # Train Loop
+
+    ##############
+    # Train Loop #
+    ##############
+
     for epoch in tqdm(range(args.epochs), total=args.epochs, desc="epoch:"):
-        # Train
+        ###############
+        # Train Phase #
+        ###############
         unet.train()
         # Iterate over data in data-loaders
         for i, data in tqdm(
@@ -160,7 +170,9 @@ def main(args):
             # (neptune) Log train loss after every step
             run["training/metrics/train_dice_loss"].log(loss.item())
 
-        # Validation
+        ####################
+        # Validation Phase #
+        ####################
         unet.eval()
         validation_pred = []
         validation_true = []
