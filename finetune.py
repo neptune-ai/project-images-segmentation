@@ -84,8 +84,8 @@ def main(args):
     ref_run["cli_args"] = vars(args)
 
     # Track Finetuning data
-    ref_run['finetune/data/version/train'].track_files(args.s3_images_path + "train")
-    ref_run['finetune/data/version/valid'].track_files(args.s3_images_path + "valid")
+    ref_run['finetuning/data/version/train'].track_files(args.s3_images_path + "train")
+    ref_run['finetuning/data/version/valid'].track_files(args.s3_images_path + "valid")
 
     # Load Data
     dataset_train, dataset_valid = datasets(args)
@@ -122,7 +122,7 @@ def main(args):
     unet.to(device)
 
     # Download the weights from the `train` run
-    ref_run['train/best_model_weights/model_weight'].download("best_unet.pt")
+    ref_run['training/model/model_weight'].download("best_unet.pt")
     ref_run.wait()
 
     # Load the downloaded weights
@@ -214,25 +214,24 @@ def main(args):
                                     File.as_image(img), name=f"Dice: {dice_coeff}")
                                 logged_images += 1
 
-        if epoch == args.epochs - 1:
-            try:
-                # DSC per patient volume
-                mean_dsc = np.mean(
-                    dsc_per_volume(
-                        validation_pred,
-                        validation_true,
-                        loader_valid.dataset.patient_slice_index,
-                    )
+        try:
+            # DSC per patient volume
+            mean_dsc = np.mean(
+                dsc_per_volume(
+                    validation_pred,
+                    validation_true,
+                    loader_valid.dataset.patient_slice_index,
                 )
-            except Exception as e:
-                mean_dsc = 0.
-                print(e)
+            )
+        except Exception as e:
+            mean_dsc = 0.
+            print(e)
 
-            ref_run["finetuning/metrics/validation_dice_coefficient"].log(mean_dsc)
+        ref_run["finetuning/metrics/validation_dice_coefficient"].log(mean_dsc)
 
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
-            run["finetuning/metrics/best_validation_dice_coefficient"] = best_validation_dsc
+            ref_run["finetuning/metrics/best_validation_dice_coefficient"] = best_validation_dsc
             torch.save(unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt"))
             ref_run['finetuning/best_model_weights/model_weight'].upload(os.path.join(
                 args.weights, "finetune_unet.pt"))
