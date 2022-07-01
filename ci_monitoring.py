@@ -5,7 +5,7 @@ import neptune.new as neptune
 
 # Fetch project
 project = neptune.get_project(
-    api_token=os.getenv('NEPTUNE_API_TOKEN'),
+    api_token=os.getenv("NEPTUNE_API_TOKEN"),
     name="common/Pytorch-ImageSegmentation-Unet",
 )
 
@@ -15,7 +15,7 @@ run_id = runs_table_df["sys/id"].values[0]
 
 # Resume run
 run = neptune.init_run(
-    api_token=os.getenv('NEPTUNE_API_TOKEN'),
+    api_token=os.getenv("NEPTUNE_API_TOKEN"),
     project="common/Pytorch-ImageSegmentation-Unet",
     run=run_id,
 )
