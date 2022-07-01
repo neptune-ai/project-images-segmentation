@@ -29,6 +29,7 @@ best_run_id = best_run_df["sys/id"].values[0]
 # (neptune) re-init the chosen run
 base_namespace = "evaluate"
 ref_run = neptune.init_run(
+    api_token=os.getenv("NEPTUNE_API_TOKEN"),
     project="common/Pytorch-ImageSegmentation-Unet",
     tags=["evaluation"],
     source_files=None,
