@@ -74,7 +74,7 @@ def main(args):
 
     # re-init the chosen run
     base_namespace = "finetuning"
-    ref_run = neptune.init(
+    ref_run = neptune.init_run(
         project="common/Pytorch-ImageSegmentation-Unet",
         tags=["finetuning"],
         source_files=None,
