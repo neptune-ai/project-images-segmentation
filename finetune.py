@@ -70,7 +70,7 @@ def main(args):
     ##########################################
 
     # (neptune) fetch project
-    project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet")
+    project = neptune.get_project(name="common/project-images-segmentation")
 
     # (neptune) find best run
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
@@ -79,7 +79,7 @@ def main(args):
     # (neptune) re-init the chosen run
     base_namespace = "finetuning"
     ref_run = neptune.init_run(
-        project="common/Pytorch-ImageSegmentation-Unet",
+        project="common/project-images-segmentation",
         tags=["finetuning"],
         source_files=None,
         monitoring_namespace=f"{base_namespace}/monitoring",

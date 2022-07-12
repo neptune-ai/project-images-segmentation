@@ -68,7 +68,7 @@ def main(args):
 
     # (neptune) init new run
     run = neptune.init_run(
-        project="common/Pytorch-ImageSegmentation-Unet",
+        project="common/project-images-segmentation",
         tags=["training"],
         source_files="*.py",  # Upload all `py` files.
     )
@@ -273,12 +273,12 @@ def main(args):
 
     # Tag as the best if `best_validation_dsc` was better than previous best
     # (neptune) fetch project
-    project = neptune.get_project(name="common/Pytorch-ImageSegmentation-Unet")
+    project = neptune.get_project(name="common/project-images-segmentation")
 
     # (neptune) find best run for given data version
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
     best_run = neptune.init_run(
-        project="common/Pytorch-ImageSegmentation-Unet",
+        project="common/project-images-segmentation",
         run=best_run_df["sys/id"].values[0],
     )
     prev_best = best_run["training/metrics/best_validation_dice_coefficient"].fetch()
@@ -293,7 +293,7 @@ def main(args):
 
         # (neptune) add current model as a new version in model registry.
         model_version = neptune.init_model_version(
-            model="PYTOR3-MOD", project="common/Pytorch-ImageSegmentation-Unet"
+            model="IMGSEG-MOD", project="common/project-images-segmentation"
         )
         model_version["model_weight"].upload(os.path.join(args.weights, "unet.pt"))
         model_version["best_validation_dice_coefficient"] = best_validation_dsc
