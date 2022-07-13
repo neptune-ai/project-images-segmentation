@@ -1,23 +1,21 @@
 import argparse
 import json
-import os
 import math
+import os
 
+import neptune.new as neptune
 import numpy as np
 import torch
 import torch.optim as optim
+from neptune.new.types import File
 from torch.utils.data import DataLoader
+from torchviz import make_dot
 from tqdm import tqdm
 
 from dataset import BrainSegmentationDataset
+from model_utils import DiceLoss, UNet
 from transform import transforms
-from model_utils import UNet, DiceLoss
-from utils import log_images, dsc, dsc_per_volume
-
-import neptune.new as neptune
-from neptune.new.types import File
-import numpy as np
-from torchviz import make_dot
+from utils import dsc, dsc_per_volume, log_images
 
 # (neptune) fetch project
 project = neptune.get_project(name="common/project-images-segmentation")
@@ -40,9 +38,7 @@ ref_run = neptune.init_run(
 ref_run[f"{base_namespace}/validation_data_version"].track_files(
     "s3://neptune-examples/data/brain-mri-dataset/evaluation/TCGA_HT_7692_19960724/"
 )
-ref_run[f"{base_namespace}/validation_data_version"].download(
-    destination="evaluation_data"
-)
+ref_run[f"{base_namespace}/validation_data_version"].download(destination="evaluation_data")
 
 valid = BrainSegmentationDataset(
     images_dir="evaluation_data",
@@ -51,7 +47,7 @@ valid = BrainSegmentationDataset(
     seed=ref_run["data/preprocessing_params/seed"].fetch(),
 )
 
-device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
+device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
 unet = UNet(
     in_channels=BrainSegmentationDataset.in_channels,

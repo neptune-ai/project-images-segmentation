@@ -1,22 +1,20 @@
 import argparse
 import json
-import os
 import math
+import os
 
+import neptune.new as neptune
 import numpy as np
 import torch
 import torch.optim as optim
+from neptune.new.types import File
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import BrainSegmentationDataset
+from model_utils import DiceLoss, UNet
 from transform import transforms
-from model_utils import UNet, DiceLoss
-from utils import log_images, dsc, dsc_per_volume
-
-import neptune.new as neptune
-from neptune.new.types import File
-import numpy as np
+from utils import dsc, dsc_per_volume, log_images
 
 
 def datasets(args):
@@ -24,9 +22,7 @@ def datasets(args):
         images_dir=args.images + "train",
         subset="train",
         image_size=args.image_size,
-        transform=transforms(
-            scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob
-        ),
+        transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
         seed=args.seed,
     )
     valid = BrainSegmentationDataset(
@@ -109,9 +105,7 @@ def main(args):
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
         # (neptune) Log sample images with mask overlay
-        ref_run[f"finetune/data/samples/images"].log(
-            File.as_image(outline_image), name=fname
-        )
+        ref_run["finetune/data/samples/images"].log(File.as_image(outline_image), name=fname)
 
     # (neptune) Log Preprocessing Params
     ref_run["finetune/data/preprocessing_params"] = {
@@ -129,7 +123,7 @@ def main(args):
     ##########################
 
     # Choose device for training.
-    device = torch.device("cpu" if not torch.cuda.is_available() else args.device)
+    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     unet = UNet(
         in_channels=BrainSegmentationDataset.in_channels,
@@ -213,14 +207,10 @@ def main(args):
                 ref_run["finetuning/metrics/validation_dice_loss"].log(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
-                validation_pred.extend(
-                    [y_pred_np[s] for s in range(y_pred_np.shape[0])]
-                )
+                validation_pred.extend([y_pred_np[s] for s in range(y_pred_np.shape[0])])
 
                 y_true_np = y_true.detach().cpu().numpy()
-                validation_true.extend(
-                    [y_true_np[s] for s in range(y_true_np.shape[0])]
-                )
+                validation_true.extend([y_true_np[s] for s in range(y_true_np.shape[0])])
 
                 if (epoch % args.vis_freq == 0) or (epoch == args.epochs - 1):
                     # If current `epoch` is a multiple of `vis_freq`.
@@ -234,7 +224,7 @@ def main(args):
                             # 2. Or have some mask in the ground truth.
                             true_sum = y_true[i].sum()
                             pred_sum = y_pred[i].round().sum()
-                            if not (true_sum == 0 and pred_sum == 0):
+                            if true_sum != 0 or pred_sum != 0:
                                 dice_coeff = dsc(y_pred_np[i], y_true_np[i])
 
                                 if img.max() > 1:
@@ -243,7 +233,9 @@ def main(args):
                                 fname = fname.replace(".tif", "")
                                 img_no = fname[fname.rfind("_") + 1 :]
                                 patient_name = fname[: fname.rfind("_")]
-                                desc = f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
+                                desc = (
+                                    f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
+                                )
                                 # (neptune) Log prediction and ground-truth on original image
                                 ref_run[
                                     f"finetuning/validation_prediction_progression/{fname}"
@@ -273,12 +265,8 @@ def main(args):
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
             # (neptune) log best_validation_dice_coefficient
-            ref_run[
-                "finetuning/metrics/best_validation_dice_coefficient"
-            ] = best_validation_dsc
-            torch.save(
-                unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt")
-            )
+            ref_run["finetuning/metrics/best_validation_dice_coefficient"] = best_validation_dsc
+            torch.save(unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt"))
             # (neptune) upload best fine-tuned weights
             ref_run["finetuning/model/model_weight"].upload(
                 os.path.join(args.weights, "finetune_unet.pt")
@@ -337,16 +325,10 @@ if __name__ == "__main__":
         default=1,
         help="frequency of saving images to log file (default: 1)",
     )
-    parser.add_argument(
-        "--weights", type=str, default="./weights", help="folder to save weights"
-    )
+    parser.add_argument("--weights", type=str, default="./weights", help="folder to save weights")
     parser.add_argument("--seed", type=int, default=42, help="random seed")
-    parser.add_argument(
-        "--logs", type=str, default="./logs", help="folder to save logs"
-    )
-    parser.add_argument(
-        "--images", type=str, default="./data/", help="folder to download images"
-    )
+    parser.add_argument("--logs", type=str, default="./logs", help="folder to save logs")
+    parser.add_argument("--images", type=str, default="./data/", help="folder to download images")
     parser.add_argument(
         "--s3-images-path",
         type=str,
