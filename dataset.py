@@ -3,11 +3,11 @@ import random
 
 import numpy as np
 import torch
+import tqdm
 from skimage.io import imread
 from torch.utils.data import Dataset
-import tqdm
 
-from utils import crop_sample, pad_sample, resize_sample, normalize_volume
+from utils import crop_sample, normalize_volume, pad_sample, resize_sample
 
 
 class BrainSegmentationDataset(Dataset):
@@ -33,7 +33,7 @@ class BrainSegmentationDataset(Dataset):
         masks = {}
         self.volume_fnames = {}
         img_cnt = 0
-        print("reading {} images...".format(subset))
+        print(f"reading {subset} images...")
         for (dirpath, dirnames, filenames) in os.walk(images_dir):
             image_slices = []
             mask_slices = []
@@ -72,9 +72,7 @@ class BrainSegmentationDataset(Dataset):
 
         print("resizing {} volumes...".format(subset))
         # resize
-        self.volumes = [
-            resize_sample(v, size=image_size) for v in tqdm.tqdm(self.volumes)
-        ]
+        self.volumes = [resize_sample(v, size=image_size) for v in tqdm.tqdm(self.volumes)]
 
         print("normalizing {} volumes...".format(subset))
         # normalize channel-wise
