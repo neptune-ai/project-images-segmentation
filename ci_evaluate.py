@@ -1,21 +1,10 @@
-import argparse
-import json
-import math
 import os
 
 import neptune.new as neptune
-import numpy as np
 import torch
-import torch.optim as optim
-from neptune.new.types import File
-from torch.utils.data import DataLoader
-from torchviz import make_dot
-from tqdm import tqdm
 
 from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
-from transform import transforms
-from utils import dsc, dsc_per_volume, log_images
 
 # (neptune) fetch project
 project = neptune.get_project(name="common/project-images-segmentation")
@@ -32,7 +21,7 @@ ref_run = neptune.init_run(
     tags=["evaluation"],
     source_files=None,
     monitoring_namespace=f"{base_namespace}/monitoring",
-    run=best_run_id,
+    with_id=best_run_id,
 )
 
 ref_run[f"{base_namespace}/validation_data_version"].track_files(

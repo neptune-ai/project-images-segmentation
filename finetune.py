@@ -1,3 +1,6 @@
+# File inspired from https://github.com/mateuszbuda/brain-segmentation-pytorch/blob/master/train.py
+# Date accessed: 23rd June, 2022
+
 import argparse
 import json
 import math
@@ -19,14 +22,14 @@ from utils import dsc, dsc_per_volume, log_images
 
 def datasets(args):
     train = BrainSegmentationDataset(
-        images_dir=args.images + "train",
+        images_dir=f"{args.images}train",
         subset="train",
         image_size=args.image_size,
         transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
         seed=args.seed,
     )
     valid = BrainSegmentationDataset(
-        images_dir=args.images + "valid",
+        images_dir=f"{args.images}valid",
         subset="validation",
         image_size=args.image_size,
         random_sampling=False,
@@ -79,14 +82,14 @@ def main(args):
         tags=["finetuning"],
         source_files=None,
         monitoring_namespace=f"{base_namespace}/monitoring",
-        run=best_run_id,
+        with_id=best_run_id,
     )
     # (neptune) log cli args
-    ref_run["finetuning/raw_data/cli_args"] = vars(args)
+    ref_run["finetuning/raw_cli_args"] = vars(args)
 
     # (neptune) Track Finetuning data
-    ref_run["finetuning/data/version/train"].track_files(args.s3_images_path + "train")
-    ref_run["finetuning/data/version/valid"].track_files(args.s3_images_path + "valid")
+    ref_run["finetuning/data/version/train"].track_files(f"{args.s3_images_path}train")
+    ref_run["finetuning/data/version/valid"].track_files(f"{args.s3_images_path}valid")
 
     ##########################################
     # Get Data for training and log samples  #
@@ -150,8 +153,6 @@ def main(args):
     }
 
     best_validation_dsc = None
-    loss_train = []
-    loss_valid = []
 
     ##############
     # Train Loop #
