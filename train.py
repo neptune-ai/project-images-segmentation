@@ -1,3 +1,6 @@
+# File inspired from https://github.com/mateuszbuda/brain-segmentation-pytorch/blob/master/train.py
+# Date accessed: 23rd June, 2022
+
 import argparse
 import json
 import math
@@ -20,14 +23,14 @@ from utils import dsc, dsc_per_volume, log_images
 
 def datasets(args):
     train = BrainSegmentationDataset(
-        images_dir=args.images + "train",
+        images_dir=f"{args.images}train",
         subset="train",
         image_size=args.image_size,
         transform=transforms(scale=args.aug_scale, angle=args.aug_angle, flip_prob=args.flip_prob),
         seed=args.seed,
     )
     valid = BrainSegmentationDataset(
-        images_dir=args.images + "valid",
+        images_dir=f"{args.images}valid",
         subset="validation",
         image_size=args.image_size,
         random_sampling=False,
@@ -70,11 +73,11 @@ def main(args):
     )
 
     # (neptune) log the cli args
-    run["raw_data/cli_args"] = vars(args)
+    run["raw_cli_args"] = vars(args)
 
     # (neptune) track hash of the training data.
-    run["data/version/train"].track_files(args.s3_images_path + "train")
-    run["data/version/valid"].track_files(args.s3_images_path + "valid")
+    run["data/version/train"].track_files(f"{args.s3_images_path}train")
+    run["data/version/valid"].track_files(f"{args.s3_images_path}valid")
 
     ##########################################
     # Get Data for training and log samples  #
@@ -267,7 +270,7 @@ def main(args):
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
     best_run = neptune.init_run(
         project="common/project-images-segmentation",
-        run=best_run_df["sys/id"].values[0],
+        with_id=best_run_df["sys/id"].values[0],
     )
     prev_best = best_run["training/metrics/best_validation_dice_coefficient"].fetch()
 
@@ -285,7 +288,7 @@ def main(args):
         )
         model_version["model_weight"].upload(os.path.join(args.weights, "unet.pt"))
         model_version["best_validation_dice_coefficient"] = best_validation_dsc
-        model_version["valid/dataset"].track_files(args.s3_images_path + "valid")
+        model_version["valid/dataset"].track_files(f"{args.s3_images_path}valid")
 
 
 if __name__ == "__main__":

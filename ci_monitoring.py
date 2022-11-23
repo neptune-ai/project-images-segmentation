@@ -17,7 +17,7 @@ run_id = runs_table_df["sys/id"].values[0]
 run = neptune.init_run(
     api_token=os.getenv("NEPTUNE_API_TOKEN"),
     project="common/project-images-segmentation",
-    run=run_id,
+    with_id=run_id,
 )
 
 # Run monitoring logic
