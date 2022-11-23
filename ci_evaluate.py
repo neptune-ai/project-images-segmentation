@@ -7,7 +7,7 @@ from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
 
 # (neptune) fetch project
-project = neptune.get_project(name="common/project-images-segmentation")
+project = neptune.init_project(name="common/project-images-segmentation")
 
 # (neptune) find best run
 best_run_df = project.fetch_runs_table(tag="best").to_pandas()
