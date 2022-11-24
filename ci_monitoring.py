@@ -4,7 +4,7 @@ import random
 import neptune.new as neptune
 
 # Fetch project
-project = neptune.get_project(
+project = neptune.init_project(
     api_token=os.getenv("NEPTUNE_API_TOKEN"),
     name="common/project-images-segmentation",
 )
