@@ -67,7 +67,6 @@ def main(args):
 
     # (neptune) init new run
     run = neptune.init_run(
-        project="common/project-images-segmentation",
         tags=["training"],
         source_files="*.py",  # Upload all `py` files.
     )
@@ -108,6 +107,13 @@ def main(args):
 
     loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
 
+    # (neptune) Log preprocessed image
+    preprocessed_image, _, _ = dataset_train[0]
+    preprocessed_image = log_images(preprocessed_image.unsqueeze(0))[0]
+    if preprocessed_image.max() > 1:
+        preprocessed_image = preprocessed_image.astype(np.float32) / 255
+    run["data/samples/preprocessed_image"] = File.as_image(preprocessed_image)
+
     ##########################
     # Get Model for training #
     ##########################
@@ -127,8 +133,8 @@ def main(args):
     model_vis = make_dot(y.mean(), params=dict(unet.named_parameters()))
     model_vis.format = "png"
     model_vis.render("model_vis")
-    # (neptune) Log model visualization
-    run["training/model/visualization"] = neptune.types.File("model_vis.png")
+    # (neptune) Log model summary
+    run["training/model/summary"] = str(unet)
 
     # (neptune) Log training meta-data
     run["training/hyper_params"] = {
@@ -264,12 +270,12 @@ def main(args):
 
     # Tag as the best if `best_validation_dsc` was better than previous best
     # (neptune) fetch project
-    project = neptune.init_project(name="common/project-images-segmentation")
+    os.environ["NEPTUNE_PROJECT"] = "common/project-images-segmentation-update"
+    project = neptune.init_project()
 
     # (neptune) find best run for given data version
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
     best_run = neptune.init_run(
-        project="common/project-images-segmentation",
         with_id=best_run_df["sys/id"].values[0],
     )
     prev_best = best_run["training/metrics/best_validation_dice_coefficient"].fetch()
@@ -283,9 +289,7 @@ def main(args):
         best_run["sys/tags"].remove("best")
 
         # (neptune) add current model as a new version in model registry.
-        model_version = neptune.init_model_version(
-            model="IMGSEG-MOD", project="common/project-images-segmentation"
-        )
+        model_version = neptune.init_model_version(model="IMG-MOD")
         model_version["model_weight"].upload(os.path.join(args.weights, "unet.pt"))
         model_version["best_validation_dice_coefficient"] = best_validation_dsc
         model_version["valid/dataset"].track_files(f"{args.s3_images_path}valid")
@@ -304,7 +308,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--epochs",
         type=int,
-        default=25,
+        default=10,
         help="number of epochs to train (default: 25)",
     )
     parser.add_argument(
@@ -373,7 +377,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--flip-prob",
-        type=int,
+        type=float,
         default=0.5,
         help="probablilty of rotation of training image (default: 0.5)",
     )

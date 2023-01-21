@@ -119,14 +119,18 @@ def outline(image, mask, color):
     return np.array(PIL.Image.blend(im, m, alpha=0.3))
 
 
-def log_images(x, y_true, y_pred, channel=1):
+def log_images(x, y_true=None, y_pred=None, channel=1):
     images = []
     x_np = x.cpu().numpy()[:, channel]
-    y_true_np = y_true.cpu().numpy()[:, 0]
-    y_pred_np = y_pred.cpu().numpy()[:, 0]
+    if y_true is not None:
+        y_true_np = y_true.cpu().numpy()[:, 0]
+    if y_pred is not None:
+        y_pred_np = y_pred.cpu().numpy()[:, 0]
     for i in range(x_np.shape[0]):
         image = gray2rgb(np.squeeze(x_np[i]))
-        image = outline(image, y_pred_np[i], color=[255, 0, 0])
-        image = outline(image, y_true_np[i], color=[0, 255, 0])
+        if y_pred is not None:
+            image = outline(image, y_pred_np[i], color=[255, 0, 0])
+        if y_true is not None:
+            image = outline(image, y_true_np[i], color=[0, 255, 0])
         images.append(image)
     return images
