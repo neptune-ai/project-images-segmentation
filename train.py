@@ -313,7 +313,7 @@ if __name__ == "__main__":
         "--epochs",
         type=int,
         default=10,
-        help="number of epochs to train (default: 25)",
+        help="number of epochs to train (default: 10)",
     )
     parser.add_argument(
         "--lr",
