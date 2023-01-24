@@ -64,17 +64,18 @@ def data_loaders(dataset_train, dataset_valid, args):
 
 def main(args):
     torch.manual_seed(args.seed)
+    os.environ["NEPTUNE_PROJECT"] = "common/project-images-segmentation-update"
 
-    # (neptune) init new run
+    # (Neptune) init new run
     run = neptune.init_run(
         tags=["training"],
         source_files="*.py",  # Upload all `py` files.
     )
 
-    # (neptune) log the cli args
+    # (Neptune) log the cli args
     run["raw_cli_args"] = vars(args)
 
-    # (neptune) track hash of the training data.
+    # (Neptune) track hash of the training data.
     run["data/version/train"].track_files(f"{args.s3_images_path}train")
     run["data/version/valid"].track_files(f"{args.s3_images_path}valid")
 
@@ -93,10 +94,10 @@ def main(args):
 
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
-        # (neptune) Log sample images with mask overlay
+        # (Neptune) Log sample images with mask overlay
         run["data/samples/images"].log(File.as_image(outline_image), name=fname)
 
-    # (neptune) Log Preprocessing Params
+    # (Neptune) Log Preprocessing Params
     run["data/preprocessing_params"] = {
         "aug_angle": args.aug_angle,
         "aug_scale": args.aug_scale,
@@ -107,7 +108,7 @@ def main(args):
 
     loader_train, loader_valid = data_loaders(dataset_train, dataset_valid, args)
 
-    # (neptune) Log preprocessed image
+    # (Neptune) Log preprocessed image
     preprocessed_image, _, _ = dataset_train[0]
     preprocessed_image = log_images(preprocessed_image.unsqueeze(0))[0]
     if preprocessed_image.max() > 1:
@@ -133,10 +134,10 @@ def main(args):
     model_vis = make_dot(y.mean(), params=dict(unet.named_parameters()))
     model_vis.format = "png"
     model_vis.render("model_vis")
-    # (neptune) Log model summary
+    # (Neptune) Log model summary
     run["training/model/summary"] = str(unet)
 
-    # (neptune) Log training meta-data
+    # (Neptune) Log training meta-data
     run["training/hyper_params"] = {
         "lr": args.lr,
         "batch_size": args.batch_size,
@@ -172,7 +173,7 @@ def main(args):
             loss.backward()
             optimizer.step()
 
-            # (neptune) Log train loss after every step
+            # (Neptune) Log train loss after every step
             run["training/metrics/train_dice_loss"].log(loss.item())
 
         ####################
@@ -197,7 +198,7 @@ def main(args):
                 y_pred = unet(x)
                 loss = dsc_loss(y_pred, y_true)
 
-                # (neptune) Log valid loss after every step
+                # (Neptune) Log valid loss after every step
                 run["training/metrics/validation_dice_loss"].log(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
@@ -232,7 +233,7 @@ def main(args):
                                 desc = (
                                     f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
                                 )
-                                # (neptune) Log prediction and ground-truth on original image
+                                # (Neptune) Log prediction and ground-truth on original image
                                 run[f"training/validation_prediction_progression/{fname}"].log(
                                     File.as_image(img),
                                     name=f"Dice: {dice_coeff}",
@@ -260,20 +261,19 @@ def main(args):
             # corresponding dice coefficient
             best_validation_dsc = mean_dsc
             torch.save(unet.state_dict(), os.path.join(args.weights, "unet.pt"))
-            # (neptune) log best_validation_dice_coefficient
+            # (Neptune) log best_validation_dice_coefficient
             run["training/metrics/best_validation_dice_coefficient"] = best_validation_dsc
-            # (neptune) upload best fine-tuned weights
+            # (Neptune) upload best fine-tuned weights
             run["training/model/model_weight"].upload(os.path.join(args.weights, "unet.pt"))
 
         # Sync after every epoch
         run.sync()
 
     # Tag as the best if `best_validation_dsc` was better than previous best
-    # (neptune) fetch project
-    os.environ["NEPTUNE_PROJECT"] = "common/project-images-segmentation-update"
+    # (Neptune) fetch project
     project = neptune.init_project()
 
-    # (neptune) find best run for given data version
+    # (Neptune) find best run for given data version
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
     best_run = neptune.init_run(
         with_id=best_run_df["sys/id"].values[0],
@@ -282,17 +282,25 @@ def main(args):
 
     # check if new model is new best
     if best_validation_dsc is not None and best_validation_dsc > prev_best:
-        # (neptune) If yes, add the best tag
+        # (Neptune) If yes, add the best tag.
         run["sys/tags"].add("best")
 
-        # (neptune) Update prev best run.
+        # (Neptune) Update prev best run.
         best_run["sys/tags"].remove("best")
 
-        # (neptune) add current model as a new version in model registry.
+        # (Neptune) add current model as a new version in model registry.
         model_version = neptune.init_model_version(model="IMG-MOD")
         model_version["model_weight"].upload(os.path.join(args.weights, "unet.pt"))
         model_version["best_validation_dice_coefficient"] = best_validation_dsc
         model_version["valid/dataset"].track_files(f"{args.s3_images_path}valid")
+
+        # (Neptune) associate run meta to model_version.
+        run_meta = {
+            "id": run.get_structure()["sys"]["id"].fetch(),
+            "name": run.get_structure()["sys"]["name"].fetch(),
+            "url": run.get_url(),
+        }
+        model_version["run"] = run_meta
 
 
 if __name__ == "__main__":
