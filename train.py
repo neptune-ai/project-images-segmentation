@@ -95,7 +95,7 @@ def main(args):
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
         # (Neptune) Log sample images with mask overlay
-        run["data/samples/images"].log(File.as_image(outline_image), name=fname)
+        run["data/samples/images"].append(File.as_image(outline_image), name=fname)
 
     # (Neptune) Log Preprocessing Params
     run["data/preprocessing_params"] = {
@@ -130,10 +130,6 @@ def main(args):
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
     dsc_loss = DiceLoss()
 
-    y = unet(image.unsqueeze(0).to(device))
-    model_vis = make_dot(y.mean(), params=dict(unet.named_parameters()))
-    model_vis.format = "png"
-    model_vis.render("model_vis")
     # (Neptune) Log model summary
     run["training/model/summary"] = str(unet)
 
@@ -174,7 +170,7 @@ def main(args):
             optimizer.step()
 
             # (Neptune) Log train loss after every step
-            run["training/metrics/train_dice_loss"].log(loss.item())
+            run["training/metrics/train_dice_loss"].append(loss.item())
 
         ####################
         # Validation Phase #
@@ -199,7 +195,7 @@ def main(args):
                 loss = dsc_loss(y_pred, y_true)
 
                 # (Neptune) Log valid loss after every step
-                run["training/metrics/validation_dice_loss"].log(loss.item())
+                run["training/metrics/validation_dice_loss"].append(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
                 validation_pred.extend([y_pred_np[s] for s in range(y_pred_np.shape[0])])
@@ -234,7 +230,7 @@ def main(args):
                                     f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
                                 )
                                 # (Neptune) Log prediction and ground-truth on original image
-                                run[f"training/validation_prediction_progression/{fname}"].log(
+                                run[f"training/validation_prediction_progression/{fname}"].append(
                                     File.as_image(img),
                                     name=f"Dice: {dice_coeff}",
                                     description=desc,
@@ -255,7 +251,7 @@ def main(args):
             mean_dsc = 0.0
             print(e)
 
-        run["training/metrics/validation_dice_coefficient"].log(mean_dsc)
+        run["training/metrics/validation_dice_coefficient"].append(mean_dsc)
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             # If we have the best_validation_dsc yet, then save the weights and
             # corresponding dice coefficient
