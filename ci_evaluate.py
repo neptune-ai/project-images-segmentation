@@ -1,6 +1,6 @@
 import os
 
-import neptune.new as neptune
+import neptune
 import torch
 
 from dataset import BrainSegmentationDataset

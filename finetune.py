@@ -6,11 +6,11 @@ import json
 import math
 import os
 
-import neptune.new as neptune
+import neptune
 import numpy as np
 import torch
 import torch.optim as optim
-from neptune.new.types import File
+from neptune.types import File
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 

@@ -1,7 +1,7 @@
 import os
 import random
 
-import neptune.new as neptune
+import neptune
 
 os.environ["NEPTUNE_PROJECT"] = "common/project-images-segmentation-update"
 
