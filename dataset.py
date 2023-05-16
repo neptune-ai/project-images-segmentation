@@ -1,5 +1,4 @@
 import os
-import random
 
 import numpy as np
 import torch
@@ -23,8 +22,6 @@ class BrainSegmentationDataset(Dataset):
         image_size=256,
         subset="train",
         random_sampling=True,
-        validation_cases=10,
-        seed=42,
     ):
         assert subset in ["all", "train", "validation"]
 
@@ -34,7 +31,7 @@ class BrainSegmentationDataset(Dataset):
         self.volume_fnames = {}
         img_cnt = 0
         print(f"reading {subset} images...")
-        for (dirpath, dirnames, filenames) in os.walk(images_dir):
+        for dirpath, dirnames, filenames in os.walk(images_dir):
             image_slices = []
             mask_slices = []
             image_names = []
@@ -49,7 +46,7 @@ class BrainSegmentationDataset(Dataset):
                     image_slices.append(imread(filepath))
                     image_names.append(filename)
                     img_cnt += 1
-            if len(image_slices) > 0:
+            if image_slices:
                 patient_id = dirpath.split("/")[-1]
                 volumes[patient_id] = np.array(image_slices[1:-1])
                 masks[patient_id] = np.array(mask_slices[1:-1])
@@ -58,23 +55,23 @@ class BrainSegmentationDataset(Dataset):
         self.patients = sorted(volumes)
         self.volume_fnames
 
-        print("preprocessing {} volumes...".format(subset))
+        print(f"preprocessing {subset} volumes...")
         # create list of tuples (volume, mask)
         self.volumes = [(volumes[k], masks[k]) for k in self.patients]
 
-        print("cropping {} volumes...".format(subset))
+        print(f"cropping {subset} volumes...")
         # crop to smallest enclosing volume
         self.volumes = [crop_sample(v) for v in self.volumes]
 
-        print("padding {} volumes...".format(subset))
+        print(f"padding {subset} volumes...")
         # pad to square
         self.volumes = [pad_sample(v) for v in self.volumes]
 
-        print("resizing {} volumes...".format(subset))
+        print(f"resizing {subset} volumes...")
         # resize
         self.volumes = [resize_sample(v, size=image_size) for v in tqdm.tqdm(self.volumes)]
 
-        print("normalizing {} volumes...".format(subset))
+        print(f"normalizing {subset} volumes...")
         # normalize channel-wise
         self.volumes = [(normalize_volume(v), m) for v, m in self.volumes]
 
@@ -87,14 +84,14 @@ class BrainSegmentationDataset(Dataset):
         # add channel dimension to masks
         self.volumes = [(v, m[..., np.newaxis]) for (v, m) in self.volumes]
 
-        print("done creating {} dataset".format(subset))
+        print(f"done creating {subset} dataset")
 
         # create global index for patient and slice (idx -> (p_idx, s_idx))
         num_slices = [v.shape[0] for v, m in self.volumes]
         self.patient_slice_index = list(
             zip(
-                sum([[i] * num_slices[i] for i in range(len(num_slices))], []),
-                sum([list(range(x)) for x in num_slices], []),
+                sum(([i] * num_slices[i] for i in range(len(num_slices))), []),
+                sum((list(range(x)) for x in num_slices), []),
             )
         )
 

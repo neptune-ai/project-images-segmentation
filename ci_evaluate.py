@@ -1,13 +1,11 @@
-import os
-
-import neptune.new as neptune
+import neptune
 import torch
 
 from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
 
 # (neptune) fetch project
-project = neptune.init_project(name="common/project-images-segmentation")
+project = neptune.init_project(project="common/project-images-segmentation")
 
 # (neptune) find best run
 best_run_df = project.fetch_runs_table(tag="best").to_pandas()
@@ -16,7 +14,6 @@ best_run_id = best_run_df["sys/id"].values[0]
 # (neptune) re-init the chosen run
 base_namespace = "evaluate"
 ref_run = neptune.init_run(
-    api_token=os.getenv("NEPTUNE_API_TOKEN"),
     project="common/project-images-segmentation",
     tags=["evaluation"],
     source_files=None,

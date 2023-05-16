@@ -2,17 +2,16 @@
 # Date accessed: 23rd June, 2022
 
 import argparse
-import json
 import math
 import os
 
-import neptune.new as neptune
+import neptune
 import numpy as np
 import torch
 import torch.optim as optim
-from neptune.new.types import File
+from neptune.types import File
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
@@ -69,7 +68,7 @@ def main(args):
     ##########################################
 
     # (neptune) fetch project
-    project = neptune.init_project(name="common/project-images-segmentation")
+    project = neptune.init_project(project="common/project-images-segmentation")
 
     # (neptune) find best run
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
@@ -108,7 +107,7 @@ def main(args):
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
         # (neptune) Log sample images with mask overlay
-        ref_run["finetune/data/samples/images"].log(File.as_image(outline_image), name=fname)
+        ref_run["finetune/data/samples/images"].append(File.as_image(outline_image), name=fname)
 
     # (neptune) Log Preprocessing Params
     ref_run["finetune/data/preprocessing_params"] = {
@@ -180,7 +179,7 @@ def main(args):
             optimizer.step()
 
             # (neptune) Log train loss to finetune namespace
-            ref_run["finetuning/metrics/train_dice_loss"].log(loss.item())
+            ref_run["finetuning/metrics/train_dice_loss"].append(loss.item())
 
         ####################
         # Validation Phase #
@@ -205,7 +204,7 @@ def main(args):
                 loss = dsc_loss(y_pred, y_true)
 
                 # (neptune) Log validation lsos to finetune namespace
-                ref_run["finetuning/metrics/validation_dice_loss"].log(loss.item())
+                ref_run["finetuning/metrics/validation_dice_loss"].append(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
                 validation_pred.extend([y_pred_np[s] for s in range(y_pred_np.shape[0])])
@@ -240,7 +239,7 @@ def main(args):
                                 # (neptune) Log prediction and ground-truth on original image
                                 ref_run[
                                     f"finetuning/validation_prediction_progression/{fname}"
-                                ].log(
+                                ].append(
                                     File.as_image(img),
                                     name=f"Dice: {dice_coeff}",
                                     description=desc,
@@ -261,7 +260,7 @@ def main(args):
             mean_dsc = 0.0
             print(e)
 
-        ref_run["finetuning/metrics/validation_dice_coefficient"].log(mean_dsc)
+        ref_run["finetuning/metrics/validation_dice_coefficient"].append(mean_dsc)
 
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
