@@ -76,11 +76,8 @@ def main(args):
     # Fetch Previous Best Run for Finetuning #
     ##########################################
 
-    # (neptune) fetch project
-    project = neptune.init_project(project="common/project-images-segmentation")
-
     # (Neptune) fetch project
-    project = neptune.init_project()
+    project = neptune.init_project(project="common/project-images-segmentation")
 
     # (Neptune) find best run
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()

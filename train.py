@@ -278,7 +278,7 @@ def main(args):
 
     # Tag as the best if `best_validation_dsc` was better than previous best
     # (Neptune) fetch project
-    project = neptune.init_project()
+    project = neptune.init_project(name="common/project-images-segmentation")
 
     # (Neptune) find best run for given data version
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
