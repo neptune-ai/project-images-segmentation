@@ -6,7 +6,8 @@ import torch
 from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
 
-os.environ["NEPTUNE_PROJECT"] = "common/project-images-segmentation-update"
+# (neptune) fetch project
+project = neptune.init_project(project="common/project-images-segmentation")
 
 # (Neptune) fetch project
 project = neptune.init_project()
@@ -18,6 +19,7 @@ best_run_id = best_run_df["sys/id"].values[0]
 # (Neptune) re-init the chosen run
 base_namespace = "evaluate"
 ref_run = neptune.init_run(
+    project="common/project-images-segmentation",
     tags=["evaluation"],
     source_files=None,
     monitoring_namespace=f"{base_namespace}/monitoring",

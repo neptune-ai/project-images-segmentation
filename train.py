@@ -2,7 +2,6 @@
 # Date accessed: 23rd June, 2022
 
 import argparse
-import json
 import math
 import os
 import uuid
@@ -151,8 +150,6 @@ def main(args):
     }
 
     best_validation_dsc = None
-    loss_train = []
-    loss_valid = []
 
     ##############
     # Train Loop #

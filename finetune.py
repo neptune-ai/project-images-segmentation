@@ -2,7 +2,6 @@
 # Date accessed: 23rd June, 2022
 
 import argparse
-import json
 import math
 import os
 import uuid
@@ -13,8 +12,9 @@ import torch
 import torch.optim as optim
 from neptune.types import File
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+
 import boto3
+from tqdm.auto import tqdm
 
 from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
@@ -76,8 +76,13 @@ def main(args):
     # Fetch Previous Best Run for Finetuning #
     ##########################################
 
+<<<<<<< HEAD
     # (Neptune) set project name
     os.environ["NEPTUNE_PROJECT"] = "common/project-images-segmentation-update"
+=======
+    # (neptune) fetch project
+    project = neptune.init_project(project="common/project-images-segmentation")
+>>>>>>> 7324320a36a62ee2f211c70d1aed9d95724ba1ee
 
     # (Neptune) fetch project
     project = neptune.init_project()
@@ -119,8 +124,13 @@ def main(args):
 
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
+<<<<<<< HEAD
         # (Neptune) Log sample images with mask overlay
         ref_run["finetuning/data/samples/images"].append(File.as_image(outline_image), name=fname)
+=======
+        # (neptune) Log sample images with mask overlay
+        ref_run["finetune/data/samples/images"].append(File.as_image(outline_image), name=fname)
+>>>>>>> 7324320a36a62ee2f211c70d1aed9d95724ba1ee
 
     # (Neptune) Log Preprocessing Params
     ref_run["finetuning/data/preprocessing_params"] = {
@@ -193,7 +203,11 @@ def main(args):
             loss.backward()
             optimizer.step()
 
+<<<<<<< HEAD
             # (Neptune) Log train loss to finetune namespace
+=======
+            # (neptune) Log train loss to finetune namespace
+>>>>>>> 7324320a36a62ee2f211c70d1aed9d95724ba1ee
             ref_run["finetuning/metrics/train_dice_loss"].append(loss.item())
 
         ####################
@@ -218,7 +232,11 @@ def main(args):
                 y_pred = unet(x)
                 loss = dsc_loss(y_pred, y_true)
 
+<<<<<<< HEAD
                 # (Neptune) Log validation loss to finetune namespace
+=======
+                # (neptune) Log validation lsos to finetune namespace
+>>>>>>> 7324320a36a62ee2f211c70d1aed9d95724ba1ee
                 ref_run["finetuning/metrics/validation_dice_loss"].append(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
