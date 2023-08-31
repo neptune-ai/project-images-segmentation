@@ -1,17 +1,19 @@
+import os
+
 import neptune
 import torch
 
 from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
 
-# (neptune) fetch project
+# (Neptune) fetch project
 project = neptune.init_project(project="common/project-images-segmentation")
 
-# (neptune) find best run
+# (Neptune) find best run
 best_run_df = project.fetch_runs_table(tag="best").to_pandas()
 best_run_id = best_run_df["sys/id"].values[0]
 
-# (neptune) re-init the chosen run
+# (Neptune) re-init the chosen run
 base_namespace = "evaluate"
 ref_run = neptune.init_run(
     project="common/project-images-segmentation",
@@ -41,7 +43,7 @@ unet = UNet(
 )
 unet.to(device)
 
-# (neptune) Download the weights from the `train` run
+# (Neptune) Download the weights from the `train` run
 ref_run["training/model/model_weight"].download("evaluate_unet.pt")
 ref_run.wait()
 
@@ -58,5 +60,5 @@ for i in range(len(valid)):
         y_pred = unet(x)
         loss += loss_fn(y_pred, y).item()
 
-# (neptune) log evaluated loss.
+# (Neptune) log evaluated loss.
 ref_run[f"{base_namespace}/mean_evaluation_loss"] = (loss) / len(valid)

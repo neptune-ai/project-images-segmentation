@@ -4,7 +4,9 @@
 import argparse
 import math
 import os
+import uuid
 
+import boto3
 import neptune
 import numpy as np
 import torch
@@ -17,6 +19,12 @@ from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
 from transform import transforms
 from utils import dsc, dsc_per_volume, log_images
+
+# Resource object for uploading to s3
+s3 = boto3.resource("s3")
+
+# Unique ID for the generated model
+unique_model_id = str(uuid.uuid4())
 
 
 def datasets(args):
@@ -67,26 +75,27 @@ def main(args):
     # Fetch Previous Best Run for Finetuning #
     ##########################################
 
-    # (neptune) fetch project
+    # (Neptune) fetch project
     project = neptune.init_project(project="common/project-images-segmentation")
 
-    # (neptune) find best run
+    # (Neptune) find best run
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
     best_run_id = best_run_df["sys/id"].values[0]
 
-    # (neptune) re-init the chosen run
+    best_run_id = args.run_id
+
+    # (Neptune) re-init the chosen run
     base_namespace = "finetuning"
     ref_run = neptune.init_run(
-        project="common/project-images-segmentation",
         tags=["finetuning"],
         source_files=None,
         monitoring_namespace=f"{base_namespace}/monitoring",
         with_id=best_run_id,
     )
-    # (neptune) log cli args
+    # (Neptune) log cli args
     ref_run["finetuning/raw_cli_args"] = vars(args)
 
-    # (neptune) Track Finetuning data
+    # (Neptune) Track Finetuning data
     ref_run["finetuning/data/version/train"].track_files(f"{args.s3_images_path}train")
     ref_run["finetuning/data/version/valid"].track_files(f"{args.s3_images_path}valid")
 
@@ -106,11 +115,11 @@ def main(args):
 
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
-        # (neptune) Log sample images with mask overlay
-        ref_run["finetune/data/samples/images"].append(File.as_image(outline_image), name=fname)
+        # (Neptune) Log sample images with mask overlay
+        ref_run["finetuning/data/samples/images"].append(File.as_image(outline_image), name=fname)
 
-    # (neptune) Log Preprocessing Params
-    ref_run["finetune/data/preprocessing_params"] = {
+    # (Neptune) Log Preprocessing Params
+    ref_run["finetuning/data/preprocessing_params"] = {
         "aug_angle": args.aug_angle,
         "aug_scale": args.aug_scale,
         "image_size": args.image_size,
@@ -133,18 +142,20 @@ def main(args):
     )
     unet.to(device)
 
-    # (neptune) Download the weights from the `train` run
-    ref_run["training/model/model_weight"].download("best_unet.pt")
+    # (Neptune) Download the weights from the `train` run
+    ref_run["training/model/model_weight"].download("model_weights")
     ref_run.wait()
 
+    files = os.listdir("model_weights")
+
     # Load the downloaded weights
-    state_dict = torch.load("best_unet.pt", map_location=device)
+    state_dict = torch.load(f"model_weights/{files[0]}", map_location=device)
     unet.load_state_dict(state_dict)
 
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
     dsc_loss = DiceLoss()
 
-    # (neptune) Log training hyper params
+    # (Neptune) Log training hyper params
     ref_run["finetuning/hyper_params"] = {
         "lr": args.lr,
         "batch_size": args.batch_size,
@@ -178,7 +189,7 @@ def main(args):
             loss.backward()
             optimizer.step()
 
-            # (neptune) Log train loss to finetune namespace
+            # (Neptune) Log train loss to finetune namespace
             ref_run["finetuning/metrics/train_dice_loss"].append(loss.item())
 
         ####################
@@ -203,7 +214,7 @@ def main(args):
                 y_pred = unet(x)
                 loss = dsc_loss(y_pred, y_true)
 
-                # (neptune) Log validation lsos to finetune namespace
+                # (Neptune) Log validation loss to finetune namespace
                 ref_run["finetuning/metrics/validation_dice_loss"].append(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
@@ -236,7 +247,7 @@ def main(args):
                                 desc = (
                                     f"Epoch: {epoch}\nPatient: {patient_name}\nImage No: {img_no}"
                                 )
-                                # (neptune) Log prediction and ground-truth on original image
+                                # (Neptune) Log prediction and ground-truth on original image
                                 ref_run[
                                     f"finetuning/validation_prediction_progression/{fname}"
                                 ].append(
@@ -264,12 +275,16 @@ def main(args):
 
         if best_validation_dsc is None or mean_dsc > best_validation_dsc:
             best_validation_dsc = mean_dsc
-            # (neptune) log best_validation_dice_coefficient
+            # (Neptune) log best_validation_dice_coefficient
             ref_run["finetuning/metrics/best_validation_dice_coefficient"] = best_validation_dsc
             torch.save(unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt"))
-            # (neptune) upload best fine-tuned weights
-            ref_run["finetuning/model/model_weight"].upload(
-                os.path.join(args.weights, "finetune_unet.pt")
+            # upload best fine-tuned weights to S3
+            s3.meta.client.upload_file(
+                "./weights/finetune_unet.pt", args.model_bucket, f"models/{unique_model_id}-unet.pt"
+            )
+            # (Neptune) upload best fine-tuned weights
+            ref_run["finetuning/model/model_weight"].track_files(
+                "s3://neptune-examples/" + f"models/{unique_model_id}-unet.pt"
             )
 
 
@@ -359,5 +374,12 @@ if __name__ == "__main__":
         default=0.5,
         help="probablilty of rotation of training image (default: 0.5)",
     )
+    parser.add_argument(
+        "--model-bucket",
+        type=str,
+        default="neptune-examples",
+        help="S3 bucket to upload model weights",
+    )
+    parser.add_argument("--run_id", type=str, default="IMG-143", help="run_id")
     args = parser.parse_args()
     main(args)

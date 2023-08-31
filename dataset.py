@@ -73,7 +73,7 @@ class BrainSegmentationDataset(Dataset):
 
         print(f"normalizing {subset} volumes...")
         # normalize channel-wise
-        self.volumes = [(normalize_volume(v), m) for v, m in self.volumes]
+        self.volumes = [(normalize_volume(v), m) for v, m in tqdm.tqdm(self.volumes)]
 
         # probabilities for sampling slices based on masks
         self.slice_weights = [m.sum(axis=-1).sum(axis=-1) for v, m in self.volumes]
