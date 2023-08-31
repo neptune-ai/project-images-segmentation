@@ -5,6 +5,7 @@ import argparse
 import json
 import math
 import os
+import uuid
 
 import neptune
 import numpy as np
@@ -13,11 +14,18 @@ import torch.optim as optim
 from neptune.types import File
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import boto3
 
 from dataset import BrainSegmentationDataset
 from model_utils import DiceLoss, UNet
 from transform import transforms
 from utils import dsc, dsc_per_volume, log_images
+
+# Resource object for uploading to s3
+s3 = boto3.resource('s3')
+
+# Unique ID for the generated model
+unique_model_id = str(uuid.uuid4())
 
 
 def datasets(args):
@@ -78,6 +86,8 @@ def main(args):
     best_run_df = project.fetch_runs_table(tag="best").to_pandas()
     best_run_id = best_run_df["sys/id"].values[0]
 
+    best_run_id = args.run_id
+
     # (Neptune) re-init the chosen run
     base_namespace = "finetuning"
     ref_run = neptune.init_run(
@@ -110,10 +120,10 @@ def main(args):
         if outline_image.max() > 1:
             outline_image = outline_image.astype(np.float32) / 255
         # (Neptune) Log sample images with mask overlay
-        ref_run["finetune/data/samples/images"].append(File.as_image(outline_image), name=fname)
+        ref_run["finetuning/data/samples/images"].append(File.as_image(outline_image), name=fname)
 
     # (Neptune) Log Preprocessing Params
-    ref_run["finetune/data/preprocessing_params"] = {
+    ref_run["finetuning/data/preprocessing_params"] = {
         "aug_angle": args.aug_angle,
         "aug_scale": args.aug_scale,
         "image_size": args.image_size,
@@ -137,11 +147,13 @@ def main(args):
     unet.to(device)
 
     # (Neptune) Download the weights from the `train` run
-    ref_run["training/model/model_weight"].download("best_unet.pt")
+    ref_run["training/model/model_weight"].download("model_weights")
     ref_run.wait()
 
+    files = os.listdir("model_weights")
+
     # Load the downloaded weights
-    state_dict = torch.load("best_unet.pt", map_location=device)
+    state_dict = torch.load(f"model_weights/{files[0]}", map_location=device)
     unet.load_state_dict(state_dict)
 
     optimizer = optim.Adam(unet.parameters(), lr=args.lr)
@@ -206,7 +218,7 @@ def main(args):
                 y_pred = unet(x)
                 loss = dsc_loss(y_pred, y_true)
 
-                # (Neptune) Log validation lsos to finetune namespace
+                # (Neptune) Log validation loss to finetune namespace
                 ref_run["finetuning/metrics/validation_dice_loss"].append(loss.item())
 
                 y_pred_np = y_pred.detach().cpu().numpy()
@@ -270,9 +282,11 @@ def main(args):
             # (Neptune) log best_validation_dice_coefficient
             ref_run["finetuning/metrics/best_validation_dice_coefficient"] = best_validation_dsc
             torch.save(unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt"))
+            # upload best fine-tuned weights to S3
+            s3.meta.client.upload_file('./weights/finetune_unet.pt', args.model_bucket, f'models/{unique_model_id}-unet.pt')
             # (Neptune) upload best fine-tuned weights
-            ref_run["finetuning/model/model_weight"].upload(
-                os.path.join(args.weights, "finetune_unet.pt")
+            ref_run["finetuning/model/model_weight"].track_files(
+                "s3://neptune-examples/"+f'models/{unique_model_id}-unet.pt'
             )
 
 
@@ -362,5 +376,12 @@ if __name__ == "__main__":
         default=0.5,
         help="probablilty of rotation of training image (default: 0.5)",
     )
+    parser.add_argument(
+        "--model-bucket",
+        type=str,
+        default="neptune-examples",
+        help="S3 bucket to upload model weights",
+    )
+    parser.add_argument("--run_id", type=str, default="IMG-143", help="run_id")
     args = parser.parse_args()
     main(args)
