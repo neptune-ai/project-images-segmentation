@@ -6,14 +6,13 @@ import math
 import os
 import uuid
 
+import boto3
 import neptune
 import numpy as np
 import torch
 import torch.optim as optim
 from neptune.types import File
 from torch.utils.data import DataLoader
-
-import boto3
 from tqdm.auto import tqdm
 
 from dataset import BrainSegmentationDataset
@@ -22,7 +21,7 @@ from transform import transforms
 from utils import dsc, dsc_per_volume, log_images
 
 # Resource object for uploading to s3
-s3 = boto3.resource('s3')
+s3 = boto3.resource("s3")
 
 # Unique ID for the generated model
 unique_model_id = str(uuid.uuid4())
@@ -280,10 +279,12 @@ def main(args):
             ref_run["finetuning/metrics/best_validation_dice_coefficient"] = best_validation_dsc
             torch.save(unet.state_dict(), os.path.join(args.weights, "finetune_unet.pt"))
             # upload best fine-tuned weights to S3
-            s3.meta.client.upload_file('./weights/finetune_unet.pt', args.model_bucket, f'models/{unique_model_id}-unet.pt')
+            s3.meta.client.upload_file(
+                "./weights/finetune_unet.pt", args.model_bucket, f"models/{unique_model_id}-unet.pt"
+            )
             # (Neptune) upload best fine-tuned weights
             ref_run["finetuning/model/model_weight"].track_files(
-                "s3://neptune-examples/"+f'models/{unique_model_id}-unet.pt'
+                "s3://neptune-examples/" + f"models/{unique_model_id}-unet.pt"
             )
 
 

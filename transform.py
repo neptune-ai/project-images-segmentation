@@ -68,9 +68,7 @@ class Rotate(object):
 
         angle = np.random.uniform(low=-self.angle, high=self.angle)
         image = rotate(image, angle, resize=False, preserve_range=True, mode="constant")
-        mask = rotate(
-            mask, angle, resize=False, order=0, preserve_range=True, mode="constant"
-        )
+        mask = rotate(mask, angle, resize=False, order=0, preserve_range=True, mode="constant")
         return image, mask
 
 

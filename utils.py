@@ -1,8 +1,8 @@
 import numpy as np
+import PIL
+from PIL import Image
 from skimage.exposure import rescale_intensity
 from skimage.transform import resize
-from PIL import Image
-import PIL
 
 
 def dsc(y_pred, y_true):

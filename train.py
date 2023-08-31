@@ -5,8 +5,8 @@ import argparse
 import math
 import os
 import uuid
-import boto3
 
+import boto3
 import neptune
 import numpy as np
 import torch
@@ -22,10 +22,11 @@ from transform import transforms
 from utils import dsc, dsc_per_volume, log_images
 
 # Resource object for uploading to s3
-s3 = boto3.resource('s3')
+s3 = boto3.resource("s3")
 
 # Unique ID for the generated model
 unique_model_id = str(uuid.uuid4())
+
 
 def datasets(args):
     train = BrainSegmentationDataset(
@@ -268,10 +269,14 @@ def main(args):
             run["training/metrics/best_validation_dice_coefficient"] = best_validation_dsc
 
             # upload best fine-tuned weights to S3
-            s3.meta.client.upload_file('./weights/unet.pt', args.model_bucket, f'models/{unique_model_id}-unet.pt')
+            s3.meta.client.upload_file(
+                "./weights/unet.pt", args.model_bucket, f"models/{unique_model_id}-unet.pt"
+            )
 
             # (Neptune) track the best fine-tuned weights
-            run["training/model/model_weight"].track_files("s3://neptune-examples/"+f'models/{unique_model_id}-unet.pt')
+            run["training/model/model_weight"].track_files(
+                "s3://neptune-examples/" + f"models/{unique_model_id}-unet.pt"
+            )
 
         # Sync after every epoch
         run.sync()
@@ -297,7 +302,9 @@ def main(args):
 
         # (Neptune) add current model as a new version in model registry.
         model_version = neptune.init_model_version(model="IMG-MOD")
-        model_version["model_weight"].track_files("s3://neptune-examples/"+f'models/{unique_model_id}-unet.pt')
+        model_version["model_weight"].track_files(
+            "s3://neptune-examples/" + f"models/{unique_model_id}-unet.pt"
+        )
         model_version["best_validation_dice_coefficient"] = best_validation_dsc
         model_version["valid/dataset"].track_files(f"{args.s3_images_path}valid")
 
